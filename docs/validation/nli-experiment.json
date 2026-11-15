@@ -1,0 +1,77 @@
+{
+  "device": "cuda",
+  "seconds": 3.7366413729996566,
+  "trained_adapter_used": false,
+  "cases": [
+    {
+      "premise": "Питание шкафа ТК-101 составляет 220 В.",
+      "hypothesis": "Питание шкафа ТК-101 составляет 220 В.",
+      "expected": "entailment",
+      "predicted": "entailment",
+      "probabilities": {
+        "entailment": 0.9979982972145081,
+        "neutral": 0.0018001440912485123,
+        "contradiction": 0.00020149028568994254
+      },
+      "missing_vocabulary_pieces": [
+        "-101",
+        "-101"
+      ]
+    },
+    {
+      "premise": "Длина кабеля: 18 м.",
+      "hypothesis": "Длина кабеля составляет 25 м.",
+      "expected": "contradiction",
+      "predicted": "contradiction",
+      "probabilities": {
+        "entailment": 0.002668821718543768,
+        "neutral": 0.0010141042293980718,
+        "contradiction": 0.9963171482086182
+      },
+      "missing_vocabulary_pieces": []
+    },
+    {
+      "premise": "Класс защиты корпуса: IP54.",
+      "hypothesis": "Класс защиты корпуса должен быть IP65.",
+      "expected": "contradiction",
+      "predicted": "entailment",
+      "probabilities": {
+        "entailment": 0.7594754695892334,
+        "neutral": 0.0598609521985054,
+        "contradiction": 0.1806635707616806
+      },
+      "missing_vocabulary_pieces": [
+        "65."
+      ]
+    },
+    {
+      "premise": "Класс защиты корпуса: IP54.",
+      "hypothesis": "Класс защиты корпуса: IP65.",
+      "expected": "contradiction",
+      "predicted": "contradiction",
+      "probabilities": {
+        "entailment": 0.1998031884431839,
+        "neutral": 0.02496955916285515,
+        "contradiction": 0.7752271890640259
+      },
+      "missing_vocabulary_pieces": [
+        "65."
+      ]
+    },
+    {
+      "premise": "Испытания шкафа ТК-101 выполнены.",
+      "hypothesis": "Отчёт содержит сопротивление изоляции шкафа ТК-101.",
+      "expected": "neutral",
+      "predicted": "neutral",
+      "probabilities": {
+        "entailment": 0.0018728164723142982,
+        "neutral": 0.9980066418647766,
+        "contradiction": 0.00012051489466102794
+      },
+      "missing_vocabulary_pieces": [
+        "-101",
+        "-101"
+      ]
+    }
+  ]
+}

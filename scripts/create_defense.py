@@ -17,7 +17,6 @@ from pptx.util import Pt as SlidePt
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "defense"
 TITLE = "Разработка системы автоматизированной проверки технической документации с применением локальной языковой модели"
-SHORT = "Локальная проверка технической документации"
 SOURCES = [
     "Техническое задание и требования к защите проекта. full_task.docx. Материалы проекта, 2026.",
     "intfloat. Multilingual E5 small [Электронный ресурс]. URL: https://huggingface.co/intfloat/multilingual-e5-small (дата обращения: 15.11.2026).",
@@ -395,9 +394,9 @@ def write_slides(runs, benchmark):
                 str(ROOT / "docs/assets/app-results.png"),
                 Inches(0.65),
                 Inches(2.1),
-                width=Inches(8),
+                width=Inches(6.5),
             )
-            text_box(slide, 9, 2.2, 3.7, 4, body, 24)
+            text_box(slide, 7.6, 2.2, 5, 4, body, 24)
         else:
             text_box(
                 slide,

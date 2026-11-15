@@ -86,9 +86,9 @@ def main():
             verified_sources[rid] = bool(result.evidence) and all(
                 item.location.page == data["known_source_pages"][rid] for item in result.evidence
             )
-    data["all_citations_point_to_known_pages"] = (
-        len(verified_sources) == len(data["known_source_pages"]) and all(verified_sources.values())
-    )
+    data["all_citations_point_to_known_pages"] = len(verified_sources) == len(
+        data["known_source_pages"]
+    ) and all(verified_sources.values())
     (folder / "metrics.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )

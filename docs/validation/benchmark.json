@@ -1,0 +1,75 @@
+{
+  "document": "synthetic 500-page PDF",
+  "seconds": 53.6065866150002,
+  "warnings": [],
+  "cancelled": false,
+  "timings": {
+    "read": 1.4263555130000896,
+    "encoder_load": 1.4639186920012435,
+    "index": 28.830405013999552,
+    "model_load": 4.461235900000247,
+    "checks": 16.857888859000013
+  },
+  "results": [
+    {
+      "requirement": {
+        "id": "B1",
+        "text": "Напряжение питания шкафа БК-777 должно составлять 220 В."
+      },
+      "status": "compliant",
+      "explanation": "Указано, что напряжение питания шкафа БК-777 составляет 220 В, что соответствует требованию.",
+      "evidence": [
+        {
+          "chunk_id": "page17",
+          "quote": "Напряжение питания шкафа БК-777 составляет 220 В.",
+          "location": {
+            "kind": "pdf",
+            "page": 17,
+            "heading": "",
+            "paragraph": null,
+            "table": null,
+            "row": null
+          }
+        }
+      ]
+    },
+    {
+      "requirement": {
+        "id": "B2",
+        "text": "Класс защиты корпуса шкафа БК-777 должен быть IP65."
+      },
+      "status": "non_compliant",
+      "explanation": "Указано, что класс защиты корпуса шкафа БК-777 составляет IP54, что не соответствует требуемому IP65.",
+      "evidence": [
+        {
+          "chunk_id": "page251",
+          "quote": "Класс защиты корпуса шкафа БК-777: IP54.",
+          "location": {
+            "kind": "pdf",
+            "page": 251,
+            "heading": "",
+            "paragraph": null,
+            "table": null,
+            "row": null
+          }
+        }
+      ]
+    },
+    {
+      "requirement": {
+        "id": "B3",
+        "text": "Отчёт должен содержать результаты испытания шкафа БК-777 на вибростойкость."
+      },
+      "status": "insufficient",
+      "explanation": "В предоставленных фрагментах отчёта не содержится информации о проведении испытания шкафа БК-777 на вибростойкость.",
+      "evidence": []
+    }
+  ],
+  "pages": 500,
+  "characters": 1151483,
+  "known_source_pages": {
+    "B1": 17,
+    "B2": 251
+  },
+  "all_citations_point_to_known_pages": true
+}

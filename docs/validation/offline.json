@@ -1,0 +1,9 @@
+{
+  "method": "LD_PRELOAD blocks non-loopback connect/sendto and DNS port 53; strace -f",
+  "ip_connect_calls": 13,
+  "external_ip_connect_calls": 0,
+  "dns_blocked": true,
+  "successful_requirements": 3,
+  "seconds": 13.374766038999951,
+  "note": "Functional offline check, not a speed benchmark"
+}
