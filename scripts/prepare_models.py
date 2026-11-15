@@ -60,9 +60,10 @@ def model_tasks(repo, files, folder):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpu", action="store_true", help="Подготовить CPU-сборку вместо Vulkan")
+    parser.add_argument("--model-size", choices=["3b", "7b"], default="7b")
     args = parser.parse_args()
     e5 = ROOT / "models" / "e5"
-    llm = ROOT / "models" / "qwen"
+    llm = ROOT / "models" / ("qwen7b" if args.model_size == "7b" else "qwen")
     tasks, e5_manifest = model_tasks(
         "intfloat/multilingual-e5-small",
         {
@@ -71,13 +72,15 @@ def main():
         },
         e5,
     )
-    llm_tasks, llm_manifest = model_tasks(
-        "Qwen/Qwen2.5-3B-Instruct-GGUF",
-        {
-            "qwen2.5-3b-instruct-q4_k_m.gguf": "model.gguf",
-        },
-        llm,
-    )
+    files = {"qwen2.5-3b-instruct-q4_k_m.gguf": "model.gguf"}
+    repo = "Qwen/Qwen2.5-3B-Instruct-GGUF"
+    if args.model_size == "7b":
+        repo = "Qwen/Qwen2.5-7B-Instruct-GGUF"
+        files = {
+            f"qwen2.5-7b-instruct-q4_k_m-0000{i}-of-00002.gguf": f"model-0000{i}-of-00002.gguf"
+            for i in (1, 2)
+        }
+    llm_tasks, llm_manifest = model_tasks(repo, files, llm)
     variant = "ubuntu-x64" if args.cpu else "ubuntu-vulkan-x64"
     name = f"llama-{BUILD}-bin-{variant}.tar.gz"
     release = get_json(f"https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{BUILD}")

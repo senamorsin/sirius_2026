@@ -27,16 +27,20 @@ def run_job(
     on_progress(0, 0, "Чтение документа и чек-листа…")
     document = read_document(document_path)
     requirements = load_checklist(checklist_path)
+    read_at = perf_counter()
     settings.validate()
     on_progress(0, 0, "Загрузка локальной модели эмбеддингов…")
     encoder = E5Encoder(settings.embedding_dir)
+    encoder_at = perf_counter()
     chunks = encoder.split(document.blocks, cancelled)
     on_progress(0, 0, f"Индексация {len(chunks)} фрагментов…")
     index = HybridIndex(chunks, encoder)
+    indexed_at = perf_counter()
     if cancelled():
         raise InterruptedError("Проверка отменена")
     on_progress(0, 0, "Загрузка языковой модели…")
     with LlamaRuntime(settings, cancelled) as judge:
+        model_at = perf_counter()
         report = check_requirements(
             document,
             requirements,
@@ -46,4 +50,14 @@ def run_job(
             on_progress=on_progress,
             cancelled=cancelled,
         )
-    return replace(report, seconds=perf_counter() - started)
+    return replace(
+        report,
+        seconds=perf_counter() - started,
+        timings=(
+            ("read", read_at - started),
+            ("encoder_load", encoder_at - read_at),
+            ("index", indexed_at - encoder_at),
+            ("model_load", model_at - indexed_at),
+            ("checks", report.seconds),
+        ),
+    )

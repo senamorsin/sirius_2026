@@ -14,7 +14,7 @@ from sirius_proj.domain import (
     Requirement,
     Status,
 )
-from sirius_proj.evidence import parse_answer, verify_answer
+from sirius_proj.evidence import normalize, parse_answer, verify_answer
 from sirius_proj.export import export_xlsx
 
 
@@ -40,6 +40,8 @@ def answer(status="compliant", quote="Напряжение питания сос
 def test_grounded_finding_keeps_program_source(block):
     result = verify_answer(Requirement("1", "Питание 220 В"), answer(), {"b1": block})
     assert result.status is Status.COMPLIANT
+    assert result.requirement == Requirement("1", "Питание 220 В")
+    assert result.evidence[0].chunk_id == "b1"
     assert result.evidence[0].location.page == 2
     assert result.evidence[0].quote in block.text
 
@@ -54,11 +56,13 @@ def test_ungrounded_decision_is_unknown(block, status, quote, chunk_id):
         Requirement("1", "Питание 220 В"), answer(status, quote, chunk_id), {"b1": block}
     )
     assert result.status is Status.INSUFFICIENT
-    assert not result.evidence
+    assert result.evidence == ()
+    assert result.requirement == Requirement("1", "Питание 220 В")
     assert "цитат" in result.explanation.lower() or "фрагмент" in result.explanation.lower()
 
 
 def test_whitespace_is_normalized_but_words_are_not(block):
+    assert normalize("  220\u00a0В.\n  Мощность — 5 кВт.  ") == "220 В. Мощность — 5 кВт."
     result = verify_answer(
         Requirement("1", "Мощность 5 кВт"), answer(quote="220 В. Мощность — 5 кВт."), {"b1": block}
     )

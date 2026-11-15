@@ -12,6 +12,7 @@ from .domain import Block
 
 class E5Encoder:
     def __init__(self, folder: Path) -> None:
+        ort.disable_telemetry_events()
         for name in ("model.onnx", "tokenizer.json"):
             if not (folder / name).is_file():
                 raise ValueError(
@@ -36,22 +37,23 @@ class E5Encoder:
             tokens = self.tokenizer.encode_batch(
                 [prefix + text for text in texts[start : start + 16]]
             )
-            feeds = {
-                "input_ids": np.array([item.ids for item in tokens], dtype=np.int64),
-                "attention_mask": np.array(
-                    [item.attention_mask for item in tokens], dtype=np.int64
-                ),
-                "token_type_ids": np.array([item.type_ids for item in tokens], dtype=np.int64),
-            }
-            names = {item.name for item in self.session.get_inputs()}
-            hidden = self.session.run(
-                None, {key: value for key, value in feeds.items() if key in names}
-            )[0]
-            mask = feeds["attention_mask"][..., None]
-            pooled = (hidden * mask).sum(axis=1) / mask.sum(axis=1)
-            pooled /= np.maximum(np.linalg.norm(pooled, axis=1, keepdims=True), 1e-12)
-            vectors.append(pooled.astype(np.float32))
+            vectors.append(self._encode_batch(tokens))
         return np.concatenate(vectors)
+
+    def _encode_batch(self, tokens) -> np.ndarray:
+        feeds = {
+            "input_ids": np.array([item.ids for item in tokens], dtype=np.int64),
+            "attention_mask": np.array([item.attention_mask for item in tokens], dtype=np.int64),
+            "token_type_ids": np.array([item.type_ids for item in tokens], dtype=np.int64),
+        }
+        names = {item.name for item in self.session.get_inputs()}
+        hidden = self.session.run(
+            None, {key: value for key, value in feeds.items() if key in names}
+        )[0]
+        mask = feeds["attention_mask"][..., None]
+        pooled = (hidden * mask).sum(axis=1) / mask.sum(axis=1)
+        pooled /= np.maximum(np.linalg.norm(pooled, axis=1, keepdims=True), 1e-12)
+        return pooled.astype(np.float32)
 
     def split(
         self,

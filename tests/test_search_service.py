@@ -58,6 +58,27 @@ def test_index_encodes_document_only_once():
     assert encoder.calls == [False, True, True]
 
 
+def test_contents_entry_does_not_displace_actual_parameter():
+    class NearEncoder(Encoder):
+        def encode(self, texts, *, query=False):
+            if query:
+                return super().encode(texts, query=True)
+            return np.array([[1.0, 0.0], [0.96, 0.28], [0.9, 0.1]], dtype=np.float32)
+
+    candidates = tuple(
+        Block(f"b{i}", text, Location("docx", paragraph=i + 1))
+        for i, text in enumerate(
+            [
+                "Сопротивление изоляции .......................... 8",
+                "Сопротивление изоляции составляет 70 МОм.",
+                "Прочие сведения о документе",
+            ]
+        )
+    )
+    index = HybridIndex(candidates, NearEncoder(), limit=1)
+    assert index.retrieve("Сопротивление изоляции должно составлять 70 МОм.")[0].id == "b1"
+
+
 class Index:
     def retrieve(self, requirement):
         return (Block("b1", "Питание 220 В", Location("pdf", page=1)),)

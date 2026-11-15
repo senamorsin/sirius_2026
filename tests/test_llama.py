@@ -21,7 +21,8 @@ def test_model_receives_table_context_without_owning_source_addresses():
 
     def handler(request):
         payload = json.loads(request.content)
-        user = json.loads(payload["messages"][1]["content"])
+        assert list(payload["response_format"]["schema"]["properties"])[-1] == "status"
+        user = json.loads(payload["messages"][-1]["content"])
         assert "ТК-101" in user["fragments"][0]["section"]
         assert user["fragments"][0]["text"] == "Напряжение | 220 В"
         assert "page" not in user["fragments"][0]

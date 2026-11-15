@@ -36,8 +36,10 @@ class Settings:
 def default_settings(root: Path) -> Settings:
     candidates = sorted((root / "runtime" / "llama").glob("**/llama-server"))
     server = candidates[0] if candidates else root / "runtime" / "llama-server"
+    seven_b = root / "models/qwen7b/model-00001-of-00002.gguf"
+    model = seven_b if seven_b.is_file() else root / "models/qwen/model.gguf"
     return Settings(
         server.resolve(),
-        (root / "models/qwen/model.gguf").resolve(),
+        model.resolve(),
         (root / "models/e5").resolve(),
     )

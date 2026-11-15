@@ -148,3 +148,4 @@ class CheckReport:
     results: tuple[CheckResult, ...]
     seconds: float
     cancelled: bool = False
+    timings: tuple[tuple[str, float], ...] = ()

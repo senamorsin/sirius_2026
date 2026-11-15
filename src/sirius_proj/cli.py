@@ -58,5 +58,6 @@ def report_to_dict(report) -> dict:
         "seconds": report.seconds,
         "warnings": list(report.document.warnings),
         "cancelled": report.cancelled,
+        "timings": dict(report.timings),
         "results": [asdict(result) for result in report.results],
     }
