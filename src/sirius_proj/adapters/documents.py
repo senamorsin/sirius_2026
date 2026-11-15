@@ -8,7 +8,7 @@ from docx import Document
 from docx.table import Table
 from pypdf import PdfReader
 
-from sirius_proj.domain.models import Block, DocumentText, Location, Requirement
+from sirius_proj.domain.models import Block, DocumentText, Location, Requirement, TableRow
 
 
 def load_checklist(path: Path) -> tuple[Requirement, ...]:
@@ -63,11 +63,14 @@ def _read_docx(path: Path) -> DocumentText:
     blocks = []
     headings = {}
     paragraph_number = table_number = 0
+    preceding = ""
     for item in document.iter_inner_content():
         heading = " / ".join(headings.values())
         if isinstance(item, Table):
             table_number += 1
-            blocks.extend(_table_blocks(item, table_number, heading))
+            caption = preceding if re.match(r"^Таблица\s*(?:№\s*)?\d+", preceding) else ""
+            blocks.extend(_table_blocks(item, table_number, heading, caption))
+            preceding = ""
         else:
             paragraph_number += 1
             text = item.text.strip()
@@ -77,6 +80,7 @@ def _read_docx(path: Path) -> DocumentText:
             heading = " / ".join(headings.values())
             location = Location("docx", heading=heading, paragraph=paragraph_number)
             blocks.append(Block(f"p{paragraph_number}", text, location))
+            preceding = text
     return DocumentText(path, tuple(blocks))
 
 
@@ -90,13 +94,62 @@ def _update_headings(headings: dict[int, str], style: str, text: str) -> dict[in
     return headings
 
 
-def _table_blocks(table: Table, number: int, heading: str) -> list[Block]:
+def _column_headers(table: Table) -> tuple[str, ...] | None:
+    if not table.rows:
+        return None
+    first = table.rows[0]
+    cells = tuple(cell.text.strip() for cell in first.cells)
+    explicit = first._tr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}trPr")
+    if (
+        explicit is not None
+        and explicit.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblHeader")
+        is not None
+    ):
+        return cells
+    names = {
+        "параметр",
+        "значение",
+        "фактическое значение",
+        "документ",
+        "редакция",
+        "состояние",
+        "наименование",
+        "обозначение",
+        "дата",
+        "показатель",
+        "результат",
+        "проверка",
+        "условие",
+        "наблюдаемый результат",
+        "номер протокола",
+        "основание",
+        "единица измерения",
+    }
+    return cells if sum(cell.casefold() in names for cell in cells) >= 2 else None
+
+
+def _table_blocks(table: Table, number: int, heading: str, caption: str) -> list[Block]:
     blocks = []
+    headers = _column_headers(table)
     for row_number, row in enumerate(table.rows, 1):
-        text = " | ".join(cell.text.strip() for cell in row.cells).strip(" |")
-        if text:
+        if row_number == 1 and headers is not None:
+            continue
+        cells = tuple(cell.text.strip() for cell in row.cells)
+        if any(cells):
+            columns = (
+                headers
+                if headers and len(headers) == len(cells)
+                else tuple(f"Столбец {i}" for i in range(1, len(cells) + 1))
+            )
             location = Location("docx", heading=heading, table=number, row=row_number)
-            blocks.append(Block(f"t{number}r{row_number}", text, location))
+            blocks.append(
+                Block(
+                    f"t{number}r{row_number}",
+                    " | ".join(cells),
+                    location,
+                    TableRow(columns, cells, caption),
+                )
+            )
     return blocks
 
 

@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -33,7 +33,7 @@ from sirius_proj.config import Settings
 from sirius_proj.domain.models import CheckFailure, CheckReport, CheckResult, Status
 from sirius_proj.ui.results import ResultTable, describe_result
 from sirius_proj.ui.style import STYLE
-from sirius_proj.ui.worker import CheckWorker
+from sirius_proj.ui.worker import CheckWorker, Installer, SetupWorker
 
 
 def path_control(edit: QLineEdit, button: QPushButton) -> QWidget:
@@ -51,11 +51,14 @@ class MainWindow(QMainWindow):
         defaults: Settings,
         service_factory: Callable[[Settings], ReviewService],
         report_writer: Callable[[Path, CheckReport], None],
+        installer: Installer | None = None,
     ):
         super().__init__()
         self.defaults = defaults
         self.service_factory = service_factory
         self.report_writer = report_writer
+        self.installer = installer
+        self.setup_worker = None
         self.preferences = QSettings("Sirius2026", "DocumentReview")
         self.worker = None
         self.report: CheckReport | None = None
@@ -65,6 +68,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 720)
         self.setStyleSheet(STYLE)
         self._build_ui()
+        if installer is not None:
+            QTimer.singleShot(0, self._initial_setup)
 
     def _build_ui(self):
         root = QWidget()
@@ -147,7 +152,48 @@ class MainWindow(QMainWindow):
         self.gpu_check = QCheckBox("Использовать GPU (снимите для режима CPU)")
         self.gpu_check.setChecked(True)
         form.addRow("", self.gpu_check)
+        self.prepare_button = QPushButton("Подготовить компоненты")
+        self.prepare_button.setEnabled(self.installer is not None)
+        self.prepare_button.clicked.connect(self.prepare_components)
+        form.addRow("", self.prepare_button)
         return panel
+
+    def _initial_setup(self):
+        settings = replace(
+            self.defaults,
+            server_binary=Path(self.server_edit.text()),
+            model_file=Path(self.model_edit.text()),
+            embedding_dir=Path(self.embedding_edit.text()),
+        )
+        if settings.missing_components:
+            self.prepare_components()
+
+    def prepare_components(self):
+        if self.installer is None or self.worker is not None or self.setup_worker is not None:
+            return
+        self._set_busy(True)
+        self.progress.setRange(0, 0)
+        self.setup_worker = SetupWorker(self.installer)
+        self.setup_worker.progress.connect(self.message.setText)
+        self.setup_worker.prepared.connect(self._components_ready)
+        self.setup_worker.failed.connect(self._on_failure)
+        self.setup_worker.finished.connect(self._setup_finished)
+        self.setup_worker.start()
+
+    def _components_ready(self, settings):
+        self.defaults = settings
+        self.server_edit.setText(str(settings.server_binary))
+        self.model_edit.setText(str(settings.model_file))
+        self.embedding_edit.setText(str(settings.embedding_dir))
+
+    def _setup_finished(self):
+        self.setup_worker.deleteLater()
+        self.setup_worker = None
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self._set_busy(False)
+        if self.pending_close:
+            self.close()
 
     def _toggle_settings(self, checked):
         self.settings_panel.setVisible(checked)
@@ -221,6 +267,8 @@ class MainWindow(QMainWindow):
         return splitter
 
     def start_check(self):
+        if self.worker is not None or self.setup_worker is not None:
+            return
         settings = replace(
             self.defaults,
             server_binary=Path(self.server_edit.text()),
@@ -292,7 +340,7 @@ class MainWindow(QMainWindow):
 
     def _on_failure(self, message):
         self.message.setText(message)
-        if not self.pending_close and message != "Проверка отменена":
+        if not self.pending_close and not message.endswith("отменена"):
             QMessageBox.warning(self, "Проверка не выполнена", message)
 
     def _on_finished(self):
@@ -330,13 +378,15 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Не удалось сохранить отчёт", str(error))
 
     def cancel_check(self):
-        if self.worker is not None:
-            self.worker.cancel_event.set()
+        active = self.worker or self.setup_worker
+        if active is not None:
+            active.cancel_event.set()
             self.cancel_button.setEnabled(False)
-            self.message.setText("Остановка после текущего запроса к модели…")
+            self.message.setText("Остановка текущей операции…")
 
     def closeEvent(self, event):
-        if self.worker is not None and self.worker.isRunning():
+        active = self.worker or self.setup_worker
+        if active is not None and active.isRunning():
             self.pending_close = True
             self.cancel_check()
             event.ignore()
@@ -344,8 +394,8 @@ class MainWindow(QMainWindow):
             event.accept()
 
 
-def launch(settings: Settings, service_factory, report_writer) -> int:
+def launch(settings: Settings, service_factory, report_writer, installer=None) -> int:
     app = QApplication.instance() or QApplication([])
-    window = MainWindow(settings, service_factory, report_writer)
+    window = MainWindow(settings, service_factory, report_writer, installer)
     window.show()
     return app.exec()

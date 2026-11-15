@@ -6,16 +6,17 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from sirius_proj.config import default_settings
+from sirius_proj.config import default_data_dir, default_settings
 from sirius_proj.domain.models import CheckFailure
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Локальная проверка технической документации")
     parser.add_argument(
-        "--data-dir", type=Path, default=Path.cwd(), help="Каталог проекта с models/ и runtime/"
+        "--data-dir", type=Path, default=default_data_dir(), help="Каталог компонентов приложения"
     )
     commands = parser.add_subparsers(dest="command")
+    commands.add_parser("install", help="Подготовить модели и недостающие компоненты")
     check = commands.add_parser("check", help="Проверить документ без графического интерфейса")
     check.add_argument("document", type=Path)
     check.add_argument("checklist", type=Path)
@@ -24,11 +25,29 @@ def main() -> int:
     check.add_argument("--cpu", action="store_true")
     args = parser.parse_args()
     settings = default_settings(args.data_dir)
+    if args.command == "install":
+        from sirius_proj.installation import install_components
+
+        try:
+            install_components(args.data_dir)
+            return 0
+        except (OSError, ValueError, RuntimeError) as error:
+            print(f"Не удалось подготовить компоненты: {error}", file=sys.stderr)
+            return 1
     if args.command is None:
-        from .ui.startup import prepare_qt
+        from .ui.startup import MissingDesktopLibrary, prepare_qt
 
         try:
             prepare_qt(args.data_dir)
+        except MissingDesktopLibrary:
+            from sirius_proj.installation import prepare_desktop
+
+            try:
+                prepare_desktop(args.data_dir)
+                prepare_qt(args.data_dir)
+            except (OSError, RuntimeError) as error:
+                print(str(error), file=sys.stderr)
+                return 1
         except RuntimeError as error:
             print(str(error), file=sys.stderr)
             return 1

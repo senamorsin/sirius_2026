@@ -16,6 +16,16 @@ class Encoder(Protocol):
     def encode(self, texts: Sequence[str], *, query: bool = False) -> NDArray[np.float32]: ...
 
 
+def contextual_text(block: Block) -> str:
+    if block.table is None:
+        return block.text
+    values = "; ".join(
+        f"{header}: {cell}"
+        for header, cell in zip(block.table.headers, block.table.cells, strict=True)
+    )
+    return f"{block.location.heading}\n{block.table.caption}\n{values}"
+
+
 IDENTIFIER = re.compile(
     r"(?<!\w)(?:[\w]+[-./][\w./-]*\d[\w./-]*|\d+(?:\.\d+)+|[A-Za-zА-Яа-яЁё]+\d+[\w-]*)(?!\w)"
 )
@@ -64,9 +74,17 @@ class HybridIndex:
         self.chunks = chunks
         self.encoder = encoder
         self.limit = limit
-        self.vectors = encoder.encode([chunk.text for chunk in chunks])
-        self.terms = tuple(identifiers(chunk.text) for chunk in chunks)
-        self.word_counts = tuple(words(chunk.text) for chunk in chunks)
+        texts = tuple(contextual_text(chunk) for chunk in chunks)
+        self.vectors = encoder.encode(texts)
+        self.terms = tuple(identifiers(text) for text in texts)
+        frequencies = Counter(term for terms in self.terms for term in terms)
+        # Rare identifiers can rescue an exact match; a repeated object name cannot
+        # displace the actual parameter simply because its paragraph omits that name.
+        self.identifier_weights = {
+            term: 3 * (log1p((len(chunks) - count + 0.5) / (count + 0.5)) / log1p(len(chunks))) ** 3
+            for term, count in frequencies.items()
+        }
+        self.word_counts = tuple(words(text) for text in texts)
         self.idf, self.average_length = lexical_statistics(self.word_counts)
 
     def retrieve(self, requirement: str) -> tuple[Block, ...]:
@@ -75,7 +93,11 @@ class HybridIndex:
         terms = identifiers(requirement)
         query = words(requirement)
         scores = [
-            (len(terms & self.terms[i]), self._score(i, float(similarities[i]), query), -i)
+            (
+                self._score(i, float(similarities[i]), query)
+                + sum(self.identifier_weights[term] for term in terms & self.terms[i]),
+                -i,
+            )
             for i in range(len(self.chunks))
         ]
         ranked = sorted(range(len(scores)), key=scores.__getitem__, reverse=True)
@@ -85,6 +107,6 @@ class HybridIndex:
         lexical = lexical_score(query, self.word_counts[index], self.idf, self.average_length)
         return (
             semantic
-            + 0.15 * lexical / (1 + lexical)
+            + 0.35 * lexical / (1 + lexical)
             - contents_penalty(self.chunks[index].text, query)
         )

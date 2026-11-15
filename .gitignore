@@ -16,6 +16,7 @@ runtime/
 private/
 output/
 .cache/
+/.installation.lock
 .pytest_cache/
 .ruff_cache/
 .coverage*

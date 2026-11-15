@@ -1,6 +1,7 @@
 """Local E5 ONNX adapter, using masked mean pooling and L2 normalization."""
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -15,9 +16,7 @@ class E5Encoder:
         ort.disable_telemetry_events()
         for name in ("model.onnx", "tokenizer.json"):
             if not (folder / name).is_file():
-                raise ValueError(
-                    f"Нет файла E5 {folder / name}. Выполните scripts/prepare_models.py"
-                )
+                raise ValueError(f"Нет файла E5 {folder / name}. Выполните sirius-proj install")
         self.raw_tokenizer = Tokenizer.from_file(str(folder / "tokenizer.json"))
         self.raw_tokenizer.no_truncation()
         self.raw_tokenizer.no_padding()
@@ -72,7 +71,14 @@ class E5Encoder:
                 end = min(start + 400, len(offsets))
                 text = block.text[offsets[start][0] : offsets[end - 1][1]].strip()
                 if text:
-                    chunks.append(Block(f"{block.id}:c{number}", text, block.location))
+                    table = (
+                        block.table.clipped(offsets[start][0], offsets[end - 1][1])
+                        if block.table
+                        else None
+                    )
+                    chunks.append(
+                        replace(block, id=f"{block.id}:c{number}", text=text, table=table)
+                    )
                 if end == len(offsets):
                     break
         return tuple(chunks)

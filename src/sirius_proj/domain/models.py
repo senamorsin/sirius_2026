@@ -77,14 +77,36 @@ def _positive_int(value: int | None) -> bool:
 
 
 @dataclass(frozen=True)
+class TableRow:
+    headers: tuple[str, ...]
+    cells: tuple[str, ...]
+    caption: str = ""
+
+    def __post_init__(self):
+        if not self.cells or len(self.headers) != len(self.cells):
+            raise ValueError("Заголовки таблицы должны соответствовать ячейкам строки")
+
+    def clipped(self, start: int, end: int) -> TableRow:
+        cursor, cells = 0, []
+        for cell in self.cells:
+            left, right = max(0, start - cursor), min(len(cell), end - cursor)
+            cells.append(cell[left:right] if right > left else "")
+            cursor += len(cell) + 3  # source cells are separated by ' | '
+        return TableRow(self.headers, tuple(cells), self.caption)
+
+
+@dataclass(frozen=True)
 class Block:
     id: str
     text: str
     location: Location
+    table: TableRow | None = None
 
     def __post_init__(self) -> None:
         require_text(self.id, "Фрагмент")
         require_text(self.text, "Текст фрагмента")
+        if self.table is not None and self.location.table is None:
+            raise ValueError("Ячейки таблицы требуют адреса таблицы и строки")
 
 
 @dataclass(frozen=True)

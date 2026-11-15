@@ -67,7 +67,7 @@ def test_chunk_offsets_overlap_and_source_survive(encoder):
 
 
 def test_missing_embedding_weights_are_actionable(tmp_path):
-    with pytest.raises(ValueError, match="prepare_models"):
+    with pytest.raises(ValueError, match="sirius-proj install"):
         embeddings.E5Encoder(tmp_path)
 
 

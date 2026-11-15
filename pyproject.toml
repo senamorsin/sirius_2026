@@ -20,20 +20,10 @@ dev = [
     "pytest>=8.4",
     "pytest-cov>=6",
     "ruff>=0.14",
-    "radon>=6",
-    "python-pptx>=1.0",
-    "reportlab>=4.4",
-    "mutmut>=3.4",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.mutmut]
-source_paths = ["src/"]
-only_mutate = ["src/sirius_proj/domain/evidence.py", "src/sirius_proj/adapters/llama_client.py"]
-also_copy = ["examples/"]
-pytest_add_cli_args_test_selection = ["tests/test_core.py", "tests/test_boundaries.py", "tests/test_search_service.py", "tests/test_llama.py"]
 
 [tool.ruff]
 target-version = "py314"
@@ -41,10 +31,6 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-
-[tool.ruff.lint.per-file-ignores]
-# Long Russian document prose and bibliographic URLs are intentional.
-"scripts/create_defense.py" = ["E501"]
 
 [project.scripts]
 sirius-proj = "sirius_proj:main"

@@ -60,3 +60,70 @@ def test_truncated_generation_is_not_a_document_status():
     with pytest.raises(CheckError, match="обрезан"):
         llm.assess(Requirement("1", "Питание"), [])
     llm.client.close()
+
+
+def test_foreign_explanation_is_translated_without_changing_decision_or_citations():
+    import json
+
+    calls = []
+    answers = [
+        {
+            "status": "non_compliant",
+            "explanation": "版本是2，不是4。",
+            "evidence": [{"chunk_id": "row", "quote": "2"}],
+        },
+        {"explanation": "Редакция равна 2, а требуется 4."},
+    ]
+
+    def handler(request):
+        payload = json.loads(request.content)
+        calls.append(payload)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(answers[len(calls) - 1], ensure_ascii=False)
+                        },
+                    }
+                ]
+            },
+        )
+
+    llm = runtime(handler)
+    answer = llm.assess(Requirement("R", "Редакция 4"), [])
+    assert answer.status is Status.NON_COMPLIANT
+    assert answer.evidence[0].chunk_id == "row"
+    assert answer.evidence[0].quote == "2"
+    assert answer.explanation == "Редакция равна 2, а требуется 4."
+    assert len(calls) == 2
+    assert "СТРОГО НА РУССКОМ" in calls[0]["messages"][0]["content"]
+    assert "status" not in calls[1]["response_format"]["schema"]["properties"]
+    llm.client.close()
+
+
+def test_explanation_still_in_foreign_language_is_a_technical_error():
+    import json
+
+    count = 0
+
+    def handler(request):
+        nonlocal count
+        count += 1
+        answer = {"explanation": "没有数据。"}
+        if count == 1:
+            answer.update(status="insufficient", evidence=[])
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(answer)}}]
+            },
+        )
+
+    llm = runtime(handler)
+    with pytest.raises(CheckError, match="на русском языке"):
+        llm.assess(Requirement("R", "Параметр"), [])
+    assert count == 2
+    llm.client.close()

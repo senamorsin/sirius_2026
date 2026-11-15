@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sirius_proj.application.ports import SearchIndex
 from sirius_proj.application.review import ReviewService
-from sirius_proj.config import Settings
+from sirius_proj.config import Settings, default_data_dir
 from sirius_proj.domain.models import Block, CheckReport
 
 
@@ -40,6 +40,10 @@ def write_report(path: Path, report: CheckReport) -> None:
 
 
 def launch_gui(settings: Settings) -> int:
+    from sirius_proj.installation import install_components
     from sirius_proj.ui.window import launch
 
-    return launch(settings, create_service, write_report)
+    def installer(progress, cancelled):
+        return install_components(settings.data_dir or default_data_dir(), progress, cancelled)
+
+    return launch(settings, create_service, write_report, installer)

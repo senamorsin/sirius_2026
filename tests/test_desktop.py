@@ -14,7 +14,7 @@ def test_missing_xcb_dependency_has_actionable_message(tmp_path, monkeypatch):
         "sirius_proj.ui.startup.ctypes.CDLL",
         lambda *args, **kwargs: (_ for _ in ()).throw(OSError("missing shared library")),
     )
-    with pytest.raises(RuntimeError, match="prepare_desktop.py"):
+    with pytest.raises(RuntimeError, match="sirius-proj install"):
         prepare_qt(tmp_path)
 
 

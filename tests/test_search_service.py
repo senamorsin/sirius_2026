@@ -157,3 +157,20 @@ def test_model_cannot_cite_unretrieved_document_block():
         Judge(),
     )
     assert report.results[0].status is Status.INSUFFICIENT
+
+
+def test_frequent_equipment_identifier_does_not_hide_parameter_without_repeated_name():
+    class SimilarEncoder:
+        def encode(self, texts, *, query=False):
+            if query:
+                return np.array([[1.0, 0.0]], dtype=np.float32)
+            return np.array([[0.8, 0.6]] * 10 + [[1.0, 0.0]], dtype=np.float32)
+
+    chunks = tuple(
+        Block(f"other{i}", "ТК-101: общие сведения о поставке.", Location("docx", paragraph=i + 1))
+        for i in range(10)
+    ) + (Block("inputs", "Подключено 16 дискретных входов.", Location("docx", paragraph=11)),)
+    found = HybridIndex(chunks, SimilarEncoder(), limit=3).retrieve(
+        "В ТК-101 должны быть подключены 16 дискретных входов."
+    )
+    assert found[0].id == "inputs"

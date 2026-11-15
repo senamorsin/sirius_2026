@@ -140,3 +140,32 @@ def test_settings_and_file_selection(window, monkeypatch, tmp_path):
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args: str(tmp_path))
     window._choose_embedding()
     assert window.embedding_edit.text() == str(tmp_path)
+
+
+def test_first_launch_prepares_missing_components_in_worker(window, app):
+    from dataclasses import replace
+    from threading import get_ident
+
+    main_thread = get_ident()
+    used_threads = []
+    missing = replace(window.defaults, model_file=window.defaults.model_file.with_name("new-model"))
+    window.defaults = missing
+    window.model_edit.setText(str(missing.model_file))
+
+    def installer(progress, cancelled):
+        used_threads.append(get_ident())
+        assert not cancelled()
+        progress("Подготовка")
+        missing.model_file.touch()
+        return missing
+
+    window.installer = installer
+    window._initial_setup()
+    assert not window.run_button.isEnabled()
+    deadline = monotonic() + 5
+    while window.setup_worker is not None and monotonic() < deadline:
+        app.processEvents()
+    assert window.setup_worker is None
+    assert used_threads and used_threads[0] != main_thread
+    assert window.run_button.isEnabled()
+    assert Path(window.model_edit.text()).is_file()
