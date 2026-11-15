@@ -2,8 +2,13 @@ import threading
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from sirius_proj.domain import (
+from sirius_proj.adapters.llama_client import parse_answer
+from sirius_proj.adapters.search import HybridIndex
+from sirius_proj.application.checks import check_requirements
+from sirius_proj.application.errors import CheckError
+from sirius_proj.domain.models import (
     Block,
     CheckFailure,
     DocumentText,
@@ -11,9 +16,6 @@ from sirius_proj.domain import (
     Requirement,
     Status,
 )
-from sirius_proj.evidence import parse_answer
-from sirius_proj.search import HybridIndex
-from sirius_proj.service import check_requirements
 
 
 class Encoder:
@@ -92,11 +94,25 @@ class Judge:
         )
 
 
+def test_programming_error_is_not_presented_as_a_document_result():
+    class BuggyIndex:
+        def retrieve(self, text):
+            raise RuntimeError("Internal index bug")
+
+    with pytest.raises(RuntimeError, match="Internal index bug"):
+        check_requirements(
+            DocumentText(Path("report.pdf"), blocks()),
+            (Requirement("1", "Питание"),),
+            BuggyIndex(),
+            Judge(),
+        )
+
+
 def test_service_reports_each_requirement_and_separates_failures():
     class BrokenJudge(Judge):
         def assess(self, requirement, chunks):
             if requirement.id == "2":
-                raise TimeoutError("Модель не ответила")
+                raise CheckError("Модель не ответила")
             return super().assess(requirement, chunks)
 
     requirements = (Requirement("1", "Питание"), Requirement("2", "Мощность"))

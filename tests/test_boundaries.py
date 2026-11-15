@@ -4,11 +4,11 @@ from pathlib import Path
 import pytest
 from pypdf import PdfReader, PdfWriter
 
-from sirius_proj.documents import load_checklist, read_document
-from sirius_proj.domain import Block, CheckFailure, Location, Requirement
-from sirius_proj.evidence import parse_answer
-from sirius_proj.export import export_xlsx
-from sirius_proj.settings import Settings
+from sirius_proj.adapters.documents import load_checklist, read_document
+from sirius_proj.adapters.llama_client import parse_answer
+from sirius_proj.adapters.xlsx import export_xlsx
+from sirius_proj.config import Settings
+from sirius_proj.domain.models import Block, CheckFailure, Location, Requirement
 
 
 @pytest.mark.parametrize(

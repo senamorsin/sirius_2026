@@ -3,14 +3,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-import numpy as np
-from numpy.typing import NDArray
-
-from .domain import Block, ModelAnswer, Requirement
-
-
-class Encoder(Protocol):
-    def encode(self, texts: Sequence[str], *, query: bool = False) -> NDArray[np.float32]: ...
+from sirius_proj.domain.models import Block, ModelAnswer, Requirement
 
 
 class SearchIndex(Protocol):

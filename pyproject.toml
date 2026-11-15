@@ -5,7 +5,6 @@ description = "Локальная проверка технической док
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "pyside6>=6.12.0",
     "python-docx>=1.2.0",
     "pypdf>=6.0",
     "openpyxl>=3.1.5",
@@ -13,7 +12,7 @@ dependencies = [
     "onnxruntime>=1.23",
     "tokenizers>=0.22",
     "httpx>=0.28",
-    "huggingface-hub>=0.36",
+    "pyside6-essentials>=6.12.0",
 ]
 
 [dependency-groups]
@@ -32,9 +31,9 @@ testpaths = ["tests"]
 
 [tool.mutmut]
 source_paths = ["src/"]
-only_mutate = ["src/sirius_proj/evidence.py"]
+only_mutate = ["src/sirius_proj/domain/evidence.py", "src/sirius_proj/adapters/llama_client.py"]
 also_copy = ["examples/"]
-pytest_add_cli_args_test_selection = ["tests/test_core.py", "tests/test_boundaries.py", "tests/test_search_service.py"]
+pytest_add_cli_args_test_selection = ["tests/test_core.py", "tests/test_boundaries.py", "tests/test_search_service.py", "tests/test_llama.py"]
 
 [tool.ruff]
 target-version = "py314"

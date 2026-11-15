@@ -23,4 +23,3 @@ coverage.json
 htmlcov/
 *.log
 *.tmp
-__pycache__/

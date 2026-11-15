@@ -3,9 +3,16 @@
 from collections.abc import Callable, Sequence
 from time import perf_counter
 
-from .domain import CheckFailure, CheckReport, CheckResult, DocumentText, Requirement
-from .evidence import verify_answer
-from .ports import Judge, SearchIndex
+from sirius_proj.application.errors import CheckError
+from sirius_proj.application.ports import Judge, SearchIndex
+from sirius_proj.domain.evidence import verify_answer
+from sirius_proj.domain.models import (
+    CheckFailure,
+    CheckReport,
+    CheckResult,
+    DocumentText,
+    Requirement,
+)
 
 
 def check_requirements(
@@ -28,7 +35,7 @@ def check_requirements(
             chunks = index.retrieve(requirement.text)
             answer = judge.assess(requirement, chunks)
             result = verify_answer(requirement, answer, {chunk.id: chunk for chunk in chunks})
-        except (ValueError, RuntimeError, OSError, TimeoutError) as error:
+        except CheckError as error:
             result = CheckFailure(requirement, str(error))
         results.append(result)
         on_result(result)

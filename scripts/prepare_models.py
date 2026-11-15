@@ -57,13 +57,27 @@ def model_tasks(repo, files, folder):
     return tasks, manifest
 
 
+def extract_runtime(archive: Path, destination: Path, name: str):
+    destination.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive) as package:
+        members = [
+            member
+            for member in package
+            if member.isdir()
+            or Path(member.name).name in ("llama-server", "LICENSE")
+            or ".so" in Path(member.name).name
+        ]
+        package.extractall(destination, members=members, filter="data")
+    (destination / "manifest.json").write_text(json.dumps({"archive": name}))
+    archive.unlink()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpu", action="store_true", help="Подготовить CPU-сборку вместо Vulkan")
-    parser.add_argument("--model-size", choices=["3b", "7b"], default="7b")
     args = parser.parse_args()
     e5 = ROOT / "models" / "e5"
-    llm = ROOT / "models" / ("qwen7b" if args.model_size == "7b" else "qwen")
+    llm = ROOT / "models/qwen7b"
     tasks, e5_manifest = model_tasks(
         "intfloat/multilingual-e5-small",
         {
@@ -72,14 +86,11 @@ def main():
         },
         e5,
     )
-    files = {"qwen2.5-3b-instruct-q4_k_m.gguf": "model.gguf"}
-    repo = "Qwen/Qwen2.5-3B-Instruct-GGUF"
-    if args.model_size == "7b":
-        repo = "Qwen/Qwen2.5-7B-Instruct-GGUF"
-        files = {
-            f"qwen2.5-7b-instruct-q4_k_m-0000{i}-of-00002.gguf": f"model-0000{i}-of-00002.gguf"
-            for i in (1, 2)
-        }
+    repo = "Qwen/Qwen2.5-7B-Instruct-GGUF"
+    files = {
+        f"qwen2.5-7b-instruct-q4_k_m-0000{i}-of-00002.gguf": f"model-0000{i}-of-00002.gguf"
+        for i in (1, 2)
+    }
     llm_tasks, llm_manifest = model_tasks(repo, files, llm)
     variant = "ubuntu-x64" if args.cpu else "ubuntu-vulkan-x64"
     name = f"llama-{BUILD}-bin-{variant}.tar.gz"
@@ -88,15 +99,19 @@ def main():
     archive = ROOT / "runtime" / name
     expected = asset.get("digest", "") or ""
     expected = expected.removeprefix("sha256:") or None
-    tasks += llm_tasks + [(asset["browser_download_url"], archive, expected)]
+    runtime = ROOT / "runtime/llama"
+    marker = runtime / "manifest.json"
+    ready = marker.is_file() and json.loads(marker.read_text()).get("archive") == name
+    ready = ready and any(runtime.glob("**/llama-server"))
+    tasks += llm_tasks
+    if not ready:
+        tasks.append((asset["browser_download_url"], archive, expected))
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = [pool.submit(download, *task) for task in tasks]
         for future in futures:
             future.result()
-    runtime = ROOT / "runtime" / "llama"
-    runtime.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive) as package:
-        package.extractall(runtime, filter="data")
+    if not ready:
+        extract_runtime(archive, runtime, name)
     for folder, manifest in [(e5, e5_manifest), (llm, llm_manifest)]:
         (folder / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print("Модели подготовлены. Для запуска: uv run sirius-proj", flush=True)

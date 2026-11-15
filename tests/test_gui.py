@@ -1,14 +1,23 @@
 from pathlib import Path
 from time import monotonic
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-from sirius_proj import gui
-from sirius_proj.documents import read_document
-from sirius_proj.domain import CheckFailure, CheckReport, Evidence, Finding, Requirement, Status
-from sirius_proj.settings import Settings
+import sirius_proj.ui.window as gui
+from sirius_proj.adapters.documents import read_document
+from sirius_proj.adapters.xlsx import write_report
+from sirius_proj.config import Settings
+from sirius_proj.domain.models import (
+    CheckFailure,
+    CheckReport,
+    Evidence,
+    Finding,
+    Requirement,
+    Status,
+)
 
 
 @pytest.fixture(scope="module")
@@ -30,7 +39,7 @@ def window(app, tmp_path, monkeypatch):
     settings.embedding_dir.mkdir()
     for name in ("model.onnx", "tokenizer.json"):
         (settings.embedding_dir / name).touch()
-    widget = gui.MainWindow(settings)
+    widget = gui.MainWindow(settings, lambda settings: None, write_report)
     widget.server_edit.setText(str(settings.server_binary))
     widget.model_edit.setText(str(settings.model_file))
     widget.embedding_edit.setText(str(settings.embedding_dir))
@@ -81,13 +90,13 @@ def test_results_sources_filtering_and_export(window, monkeypatch, tmp_path):
 def test_run_uses_worker_and_clears_previous_results(window, app, monkeypatch):
     report = sample_report()
 
-    def run(document, checklist, settings, **callbacks):
+    def run(document, checklist, **callbacks):
         callbacks["on_progress"](0, 4, "Работа")
         for result in report.results:
             callbacks["on_result"](result)
         return report
 
-    monkeypatch.setattr(gui, "run_job", run)
+    window.service_factory = lambda settings: SimpleNamespace(run=run)
     window.document_edit.setText(str(Path("examples/report.pdf").resolve()))
     window.checklist_edit.setText(str(Path("examples/checklist.csv").resolve()))
     window.start_check()
@@ -105,6 +114,19 @@ def test_invalid_paths_do_not_start_worker(window):
     window.document_edit.setText("missing.pdf")
     window.start_check()
     assert window.worker is None
+
+
+def test_service_configuration_failure_is_shown_without_starting_worker(window):
+    window.document_edit.setText(str(Path("examples/report.pdf").resolve()))
+    window.checklist_edit.setText(str(Path("examples/checklist.csv").resolve()))
+
+    def fail(settings):
+        raise ValueError("Недоступна конфигурация модели")
+
+    window.service_factory = fail
+    window.start_check()
+    assert window.worker is None
+    assert window.run_button.isEnabled()
 
 
 def test_settings_and_file_selection(window, monkeypatch, tmp_path):

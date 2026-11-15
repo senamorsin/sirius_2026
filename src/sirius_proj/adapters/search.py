@@ -2,10 +2,19 @@
 
 import re
 from collections import Counter
+from collections.abc import Sequence
 from math import log1p
+from typing import Protocol
 
-from .domain import Block
-from .ports import Encoder
+import numpy as np
+from numpy.typing import NDArray
+
+from sirius_proj.domain.models import Block
+
+
+class Encoder(Protocol):
+    def encode(self, texts: Sequence[str], *, query: bool = False) -> NDArray[np.float32]: ...
+
 
 IDENTIFIER = re.compile(
     r"(?<!\w)(?:[\w]+[-./][\w./-]*\d[\w./-]*|\d+(?:\.\d+)+|[A-Za-zА-Яа-яЁё]+\d+[\w-]*)(?!\w)"

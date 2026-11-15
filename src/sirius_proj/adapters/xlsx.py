@@ -10,7 +10,14 @@ from tempfile import NamedTemporaryFile
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from .domain import CheckFailure, CheckResult
+from sirius_proj.domain.models import CheckFailure, CheckReport, CheckResult
+
+
+def write_report(path: Path, report: CheckReport) -> None:
+    warnings = report.document.warnings
+    if report.cancelled:
+        warnings += ("Проверка отменена: экспортированы только завершённые пункты",)
+    export_xlsx(path, report.results, report.document.path, warnings)
 
 
 def safe_text(value: str) -> str:

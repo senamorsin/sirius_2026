@@ -7,7 +7,7 @@ import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
 
-from .domain import Block
+from sirius_proj.domain.models import Block
 
 
 class E5Encoder:

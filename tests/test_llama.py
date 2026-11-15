@@ -1,19 +1,14 @@
-from pathlib import Path
-
 import httpx
 import pytest
 
-from sirius_proj.domain import Block, Location, Requirement, Status
-from sirius_proj.llama import LlamaRuntime
-from sirius_proj.settings import Settings
+from sirius_proj.adapters.llama_client import LlamaJudge
+from sirius_proj.application.errors import CheckError
+from sirius_proj.domain.models import Block, Location, Requirement, Status
 
 
 def runtime(handler):
-    instance = LlamaRuntime(Settings(Path("server"), Path("model"), Path("e5")))
-    instance.client = httpx.Client(
-        transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:12345"
-    )
-    return instance
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:12345")
+    return LlamaJudge(client)
 
 
 def test_model_receives_table_context_without_owning_source_addresses():
@@ -47,7 +42,7 @@ def test_model_receives_table_context_without_owning_source_addresses():
         [Block("t1", "Напряжение | 220 В", Location("docx", heading="ТК-101", table=1, row=1))],
     )
     assert answer.status is Status.COMPLIANT
-    llm.close()
+    llm.client.close()
 
 
 @pytest.mark.parametrize("code", [400, 500])
@@ -55,13 +50,13 @@ def test_http_error_is_technical_failure(code):
     llm = runtime(lambda request: httpx.Response(code, json={"error": "bad"}))
     with pytest.raises(RuntimeError, match="локальной модели"):
         llm.assess(Requirement("1", "Питание"), [])
-    llm.close()
+    llm.client.close()
 
 
 def test_truncated_generation_is_not_a_document_status():
     llm = runtime(
         lambda request: httpx.Response(200, json={"choices": [{"finish_reason": "length"}]})
     )
-    with pytest.raises(ValueError, match="обрезан"):
+    with pytest.raises(CheckError, match="обрезан"):
         llm.assess(Requirement("1", "Питание"), [])
-    llm.close()
+    llm.client.close()

@@ -5,12 +5,12 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from sirius_proj.application import run_job
+from sirius_proj.adapters.xlsx import export_xlsx
+from sirius_proj.bootstrap import create_service
 from sirius_proj.cli import report_to_dict
-from sirius_proj.domain import CheckFailure
-from sirius_proj.evidence import normalize
-from sirius_proj.export import export_xlsx
-from sirius_proj.settings import default_settings
+from sirius_proj.config import default_settings
+from sirius_proj.domain.evidence import normalize
+from sirius_proj.domain.models import CheckFailure
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,10 +34,9 @@ def main():
         "runs": {},
     }
     for extension in args.formats:
-        report = run_job(
+        report = create_service(settings).run(
             ROOT / f"examples/report.{extension}",
             ROOT / "examples/checklist.csv",
-            settings,
             on_progress=lambda done, total, text: print(text, flush=True),
         )
         export_xlsx(

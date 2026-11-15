@@ -1,11 +1,11 @@
 """Qt presentation. The worker owns adapters; widgets receive immutable values."""
 
-import threading
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QThread, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -24,72 +24,16 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from .application import run_job
-from .domain import CheckFailure, CheckReport, CheckResult, Status
-from .export import export_xlsx
-from .settings import Settings
-
-COLORS = {
-    Status.COMPLIANT: "#15785d",
-    Status.NON_COMPLIANT: "#b23a3a",
-    Status.INSUFFICIENT: "#946518",
-}
-
-STYLE = """
-QMainWindow { background: #f3f6fa; }
-QWidget { font-family: 'DejaVu Sans'; font-size: 13px; color: #1d3449; }
-QFrame#card { background: white; border: 1px solid #dce4ed; border-radius: 10px; }
-QLabel#title { font-size: 26px; font-weight: 700; }
-QLabel#subtitle { color: #607588; }
-QLabel#eyebrow { color: #14836c; font-size: 11px; font-weight: 700; }
-QPushButton { background: #e8eef5; border: 0; border-radius: 6px; padding: 10px 16px; }
-QPushButton:hover { background: #d8e5ef; }
-QPushButton#primary { background: #176f63; color: white; font-weight: 700; }
-QPushButton#primary:hover { background: #105a50; }
-QPushButton:disabled { background: #e3e8ee; color: #8996a3; }
-QLineEdit, QComboBox { background: white; border: 1px solid #ccd7e3; border-radius: 5px;
-                      padding: 8px; selection-background-color: #176f63; }
-QTableWidget { background: white; border: 1px solid #dce4ed; gridline-color: #e9eef4;
-               selection-background-color: #e1f2ed; selection-color: #123f38; }
-QHeaderView::section { background: #edf2f7; border: 0; padding: 10px; font-weight: 700; }
-QPlainTextEdit { background: white; border: 1px solid #dce4ed; border-radius: 6px; padding: 8px; }
-QProgressBar { border: 0; background: #e1e8f0; border-radius: 4px; height: 8px; }
-QProgressBar::chunk { background: #218b77; border-radius: 4px; }
-"""
-
-
-class CheckWorker(QThread):
-    progress = Signal(int, int, str)
-    result = Signal(object)
-    report_ready = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, document: Path, checklist: Path, settings: Settings):
-        super().__init__()
-        self.document = document
-        self.checklist = checklist
-        self.settings = settings
-        self.cancel_event = threading.Event()
-
-    def run(self):
-        try:
-            report = run_job(
-                self.document,
-                self.checklist,
-                self.settings,
-                on_result=self.result.emit,
-                on_progress=self.progress.emit,
-                cancelled=self.cancel_event.is_set,
-            )
-            self.report_ready.emit(report)
-        except Exception as error:
-            self.failed.emit(str(error))
+from sirius_proj.application.review import ReviewService
+from sirius_proj.config import Settings
+from sirius_proj.domain.models import CheckFailure, CheckReport, CheckResult, Status
+from sirius_proj.ui.results import ResultTable, describe_result
+from sirius_proj.ui.style import STYLE
+from sirius_proj.ui.worker import CheckWorker
 
 
 def path_control(edit: QLineEdit, button: QPushButton) -> QWidget:
@@ -102,13 +46,19 @@ def path_control(edit: QLineEdit, button: QPushButton) -> QWidget:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, defaults: Settings):
+    def __init__(
+        self,
+        defaults: Settings,
+        service_factory: Callable[[Settings], ReviewService],
+        report_writer: Callable[[Path, CheckReport], None],
+    ):
         super().__init__()
         self.defaults = defaults
+        self.service_factory = service_factory
+        self.report_writer = report_writer
         self.preferences = QSettings("Sirius2026", "DocumentReview")
         self.worker = None
         self.report: CheckReport | None = None
-        self.results: list[CheckResult] = []
         self.pending_close = False
         self.setWindowTitle("Контроль документации · Сириус")
         self.resize(1280, 900)
@@ -240,7 +190,7 @@ class MainWindow(QMainWindow):
 
     def _result_area(self):
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.table = QTableWidget(0, 4)
+        self.table = ResultTable()
         self.table.setHorizontalHeaderLabels(["ID", "Требование", "Статус", "Пояснение"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -284,6 +234,7 @@ class MainWindow(QMainWindow):
             if not document.is_file() or not checklist.is_file():
                 raise ValueError("Выберите существующие документ и CSV-чек-лист")
             settings.validate()
+            service = self.service_factory(settings)
         except ValueError as error:
             QMessageBox.warning(self, "Проверка не запущена", str(error))
             return
@@ -294,12 +245,11 @@ class MainWindow(QMainWindow):
         ]:
             self.preferences.setValue(key, str(value))
         self.report = None
-        self.results.clear()
-        self.table.setRowCount(0)
+        self.table.clear_results()
         self.details.clear()
         self.summary.setText("Проверено: 0")
         self._set_busy(True)
-        self.worker = CheckWorker(document, checklist, settings)
+        self.worker = CheckWorker(document, checklist, service)
         self.worker.progress.connect(self._on_progress)
         self.worker.result.connect(self._on_result)
         self.worker.report_ready.connect(self._on_report)
@@ -318,24 +268,14 @@ class MainWindow(QMainWindow):
         self.progress.setValue(done)
         self.message.setText(message)
 
+    @property
+    def results(self) -> tuple[CheckResult, ...]:
+        return self.table.results
+
     def _on_result(self, result):
-        row = self.table.rowCount()
-        self.results.append(result)
-        self.table.insertRow(row)
-        failure = isinstance(result, CheckFailure)
-        status = "Техническая ошибка" if failure else result.status.label
-        explanation = result.message if failure else result.explanation
-        values = [result.requirement.id, result.requirement.text, status, explanation]
-        for column, value in enumerate(values):
-            item = QTableWidgetItem(value)
-            if column == 2:
-                item.setForeground(QColor("#b23a3a" if failure else COLORS[result.status]))
-            self.table.setItem(row, column, item)
-        self.table.resizeRowToContents(row)
+        self.table.append_result(result)
         self.summary.setText(f"Проверено: {len(self.results)}")
         self._filter_rows()
-        if row == 0:
-            self.table.selectRow(0)
 
     def _on_report(self, report):
         self.report = report
@@ -365,27 +305,12 @@ class MainWindow(QMainWindow):
             self.close()
 
     def _filter_rows(self):
-        selected = self.filter.currentData()
-        for row, result in enumerate(self.results):
-            value = "error" if isinstance(result, CheckFailure) else result.status.value
-            self.table.setRowHidden(row, selected not in ("all", value))
+        self.table.filter_status(self.filter.currentData())
 
     def _show_evidence(self):
-        row = self.table.currentRow()
-        if not 0 <= row < len(self.results):
-            return
-        result = self.results[row]
-        if isinstance(result, CheckFailure):
-            self.details.setPlainText("Техническая ошибка\n\n" + result.message)
-            return
-        parts = [result.requirement.text, result.status.label, result.explanation]
-        for number, item in enumerate(result.evidence, 1):
-            parts.append(
-                f"{number}. {item.location.label}\nФрагмент: {item.chunk_id}\n«{item.quote}»"
-            )
-        if not result.evidence:
-            parts.append("Подтверждённых цитат нет.")
-        self.details.setPlainText("\n\n".join(parts))
+        result = self.table.selected_result()
+        if result is not None:
+            self.details.setPlainText(describe_result(result))
 
     def save_report(self):
         if self.report is None:
@@ -398,11 +323,8 @@ class MainWindow(QMainWindow):
         destination = Path(path)
         if destination.suffix.lower() != ".xlsx":
             destination = destination.with_suffix(".xlsx")
-        warnings = self.report.document.warnings
-        if self.report.cancelled:
-            warnings += ("Проверка отменена: экспортированы только завершённые пункты",)
         try:
-            export_xlsx(destination, self.report.results, self.report.document.path, warnings)
+            self.report_writer(destination, self.report)
             self.message.setText(f"Отчёт сохранён: {destination}")
         except Exception as error:
             QMessageBox.warning(self, "Не удалось сохранить отчёт", str(error))
@@ -422,8 +344,8 @@ class MainWindow(QMainWindow):
             event.accept()
 
 
-def launch(settings: Settings) -> int:
+def launch(settings: Settings, service_factory, report_writer) -> int:
     app = QApplication.instance() or QApplication([])
-    window = MainWindow(settings)
+    window = MainWindow(settings, service_factory, report_writer)
     window.show()
     return app.exec()

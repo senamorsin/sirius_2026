@@ -59,7 +59,7 @@ def ast_functions(path):
 def main():
     measured = json.loads((ROOT / "coverage.json").read_text())["files"]
     records, chunks = [], []
-    for path in sorted((ROOT / "src/sirius_proj").glob("*.py")):
+    for path in sorted((ROOT / "src/sirius_proj").rglob("*.py")):
         records.extend(crap_records(path, measured.get(str(path.relative_to(ROOT)), {})))
         chunks.extend(ast_functions(path))
     duplicates = []
@@ -74,9 +74,8 @@ def main():
         "ast_duplication_threshold": 0.8,
         "duplicate_candidates": duplicates,
     }
-    (ROOT / "docs/validation/quality.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2)
-    )
+    (ROOT / "output").mkdir(exist_ok=True)
+    (ROOT / "output/quality.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
     print(f"CRAP >= 10: {len(report['crap_violations'])}; AST similarity >= 0.8: {len(duplicates)}")
     raise SystemExit(bool(report["crap_violations"] or duplicates))
 

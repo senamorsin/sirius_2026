@@ -3,8 +3,8 @@ from dataclasses import replace
 import httpx
 import pytest
 
-from sirius_proj import llama
-from sirius_proj.settings import Settings
+import sirius_proj.adapters.llama_process as llama
+from sirius_proj.config import Settings
 
 
 @pytest.fixture
@@ -59,8 +59,10 @@ def mock_runtime(monkeypatch, code=200, process=None):
 def test_owned_server_is_local_offline_and_terminated(settings, monkeypatch):
     process, captured = mock_runtime(monkeypatch)
     monkeypatch.setenv("LLAMA_ARG_RPC", "remote.invalid:1234")
-    with llama.LlamaRuntime(settings) as runtime:
+    runtime = llama.LlamaServer(settings)
+    with runtime as judge:
         assert runtime.process is process
+        assert judge.client is runtime.client
         assert "127.0.0.1" in captured["command"]
         assert "--offline" in captured["command"]
         assert "LLAMA_ARG_RPC" not in captured["env"]
@@ -72,7 +74,7 @@ def test_owned_server_is_local_offline_and_terminated(settings, monkeypatch):
 def test_model_startup_timeout_cleans_up(settings, monkeypatch):
     process, _ = mock_runtime(monkeypatch, code=503)
     with pytest.raises(TimeoutError):
-        with llama.LlamaRuntime(replace(settings, startup_timeout=0.01)):
+        with llama.LlamaServer(replace(settings, startup_timeout=0.01)):
             pytest.fail("server is not ready")
     assert process.terminated
 
@@ -80,7 +82,7 @@ def test_model_startup_timeout_cleans_up(settings, monkeypatch):
 def test_cancel_during_startup_cleans_up(settings, monkeypatch):
     process, _ = mock_runtime(monkeypatch)
     with pytest.raises(InterruptedError):
-        with llama.LlamaRuntime(settings, lambda: True):
+        with llama.LlamaServer(settings, lambda: True):
             pytest.fail("cancelled")
     assert process.terminated
 
@@ -92,7 +94,7 @@ def test_process_crash_explains_startup_failure(settings, monkeypatch):
 
     mock_runtime(monkeypatch, process=DeadProcess())
     with pytest.raises(RuntimeError, match="завершился"):
-        with llama.LlamaRuntime(settings):
+        with llama.LlamaServer(settings):
             pytest.fail("dead server")
 
 
@@ -115,3 +117,19 @@ def test_nvidia_is_preferred_over_integrated_gpu(monkeypatch, settings):
         ),
     )
     assert llama.device_arguments(settings.server_binary, True) == ["--device", "Vulkan1"]
+
+
+def test_device_detection_failure_closes_resources(settings, monkeypatch):
+    mock_runtime(monkeypatch)
+
+    def fail(*args):
+        raise RuntimeError("Device probe failed")
+
+    monkeypatch.setattr(llama, "device_arguments", fail)
+    server = llama.LlamaServer(settings)
+    with pytest.raises(RuntimeError, match="Device probe"):
+        with server:
+            pytest.fail("No server should be started")
+    assert server.log.closed
+    assert server.client.is_closed
+    assert server.process is None

@@ -6,8 +6,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from .domain import CheckFailure
-from .settings import default_settings
+from sirius_proj.config import default_settings
+from sirius_proj.domain.models import CheckFailure
 
 
 def main() -> int:
@@ -32,20 +32,18 @@ def main() -> int:
         except RuntimeError as error:
             print(str(error), file=sys.stderr)
             return 1
-        from .gui import launch
+        from sirius_proj.bootstrap import launch_gui
 
-        return launch(settings)
-    from .application import run_job
-    from .export import export_xlsx
+        return launch_gui(settings)
+    from sirius_proj.bootstrap import create_service, write_report
 
     try:
-        report = run_job(
+        report = create_service(replace(settings, use_gpu=not args.cpu)).run(
             args.document,
             args.checklist,
-            replace(settings, use_gpu=not args.cpu),
             on_progress=lambda done, total, text: print(text, flush=True),
         )
-        export_xlsx(args.output, report.results, report.document.path, report.document.warnings)
+        write_report(args.output, report)
         if args.json:
             args.json.write_text(
                 json.dumps(report_to_dict(report), ensure_ascii=False, indent=2), encoding="utf-8"

@@ -11,11 +11,11 @@ from create_examples import register_fonts
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
-from sirius_proj.application import run_job
+from sirius_proj.adapters.xlsx import export_xlsx
+from sirius_proj.bootstrap import create_service
 from sirius_proj.cli import report_to_dict
-from sirius_proj.domain import CheckFailure
-from sirius_proj.export import export_xlsx
-from sirius_proj.settings import default_settings
+from sirius_proj.config import default_settings
+from sirius_proj.domain.models import CheckFailure
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,8 +68,8 @@ def main():
     settings = default_settings(ROOT)
     if args.model:
         settings = replace(settings, model_file=args.model.resolve())
-    report = run_job(
-        document, checklist, settings, on_progress=lambda done, total, text: print(text, flush=True)
+    report = create_service(settings).run(
+        document, checklist, on_progress=lambda done, total, text: print(text, flush=True)
     )
     export_xlsx(
         folder / "results.xlsx", report.results, report.document.path, report.document.warnings

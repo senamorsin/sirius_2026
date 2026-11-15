@@ -5,10 +5,19 @@ import numpy as np
 import pytest
 from tokenizers import Tokenizer, models, pre_tokenizers
 
-from sirius_proj import application, cli, embeddings
-from sirius_proj.domain import Block, CheckFailure, CheckReport, DocumentText, Location, Requirement
-from sirius_proj.evidence import parse_answer
-from sirius_proj.settings import Settings
+import sirius_proj.adapters.embeddings as embeddings
+import sirius_proj.bootstrap as application
+from sirius_proj import cli
+from sirius_proj.adapters.llama_client import parse_answer
+from sirius_proj.application.review import ReviewService
+from sirius_proj.domain.models import (
+    Block,
+    CheckFailure,
+    CheckReport,
+    DocumentText,
+    Location,
+    Requirement,
+)
 
 
 @pytest.fixture
@@ -62,19 +71,9 @@ def test_missing_embedding_weights_are_actionable(tmp_path):
         embeddings.E5Encoder(tmp_path)
 
 
-def test_composition_uses_one_index_and_owned_judge(tmp_path, monkeypatch):
-    settings = Settings(Path("server"), Path("model"), Path("e5"))
-    monkeypatch.setattr(Settings, "validate", lambda self: None)
+def test_use_case_accepts_injected_adapters_and_closes_judge():
     block = Block("b1", "220 В", Location("pdf", page=1))
     document = DocumentText(Path("doc.pdf"), (block,))
-    monkeypatch.setattr(application, "read_document", lambda path: document)
-    monkeypatch.setattr(application, "load_checklist", lambda path: (Requirement("1", "Питание"),))
-    monkeypatch.setattr(
-        application, "E5Encoder", lambda folder: SimpleNamespace(split=lambda *args: (block,))
-    )
-    monkeypatch.setattr(
-        application, "HybridIndex", lambda *args: SimpleNamespace(retrieve=lambda text: (block,))
-    )
 
     class Judge:
         closed = False
@@ -92,19 +91,28 @@ def test_composition_uses_one_index_and_owned_judge(tmp_path, monkeypatch):
             )
 
     judge = Judge()
-    monkeypatch.setattr(application, "LlamaRuntime", lambda *args: judge)
-    report = application.run_job(Path("doc.pdf"), Path("list.csv"), settings)
+    service = ReviewService(
+        lambda path: document,
+        lambda path: (Requirement("1", "Питание"),),
+        lambda blocks, cancelled: SimpleNamespace(retrieve=lambda text: blocks),
+        lambda cancelled: judge,
+    )
+    report = service.run(Path("doc.pdf"), Path("list.csv"))
     assert judge.closed
     assert report.results[0].evidence[0].quote == "220 В"
     assert dict(report.timings)["read"] >= 0
     with pytest.raises(InterruptedError):
-        application.run_job(Path("doc.pdf"), Path("list.csv"), settings, cancelled=lambda: True)
+        service.run(Path("doc.pdf"), Path("list.csv"), cancelled=lambda: True)
 
 
 def test_cli_export_json_and_technical_exit_code(tmp_path, monkeypatch):
     result = CheckFailure(Requirement("1", "Питание"), "Модель недоступна")
     report = CheckReport(DocumentText(Path("doc.pdf"), ()), (result,), 0.2)
-    monkeypatch.setattr(application, "run_job", lambda *args, **kwargs: report)
+    monkeypatch.setattr(
+        application,
+        "create_service",
+        lambda settings: SimpleNamespace(run=lambda *args, **kwargs: report),
+    )
     output = tmp_path / "report.xlsx"
     raw = tmp_path / "report.json"
     monkeypatch.setattr(
@@ -128,5 +136,5 @@ def test_cli_export_json_and_technical_exit_code(tmp_path, monkeypatch):
     def fail(*args, **kwargs):
         raise ValueError("Некорректный CSV")
 
-    monkeypatch.setattr(application, "run_job", fail)
+    monkeypatch.setattr(application, "create_service", fail)
     assert cli.main() == 1

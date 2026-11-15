@@ -8,7 +8,7 @@ from docx import Document
 from docx.table import Table
 from pypdf import PdfReader
 
-from .domain import Block, DocumentText, Location, Requirement
+from sirius_proj.domain.models import Block, DocumentText, Location, Requirement
 
 
 def load_checklist(path: Path) -> tuple[Requirement, ...]:
