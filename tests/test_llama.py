@@ -127,3 +127,91 @@ def test_explanation_still_in_foreign_language_is_a_technical_error():
         llm.assess(Requirement("R", "Параметр"), [])
     assert count == 2
     llm.client.close()
+
+
+def test_table_cell_reference_resolves_to_original_text_and_row():
+    import json
+
+    from sirius_proj.domain.evidence import verify_answer
+    from sirius_proj.domain.models import TableRow
+
+    block = Block(
+        "t3r2",
+        "Руководство | 2",
+        Location("docx", table=3, row=2),
+        TableRow(("Документ", "Редакция"), ("Руководство", "2")),
+    )
+
+    def handler(request):
+        data = json.loads(json.loads(request.content)["messages"][-1]["content"])
+        cell = data["tables"][0]["rows"][0]["cells"][1]
+        assert cell["cell_id"] == "t3r2:cell2"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "status": "non_compliant",
+                                    "explanation": "Передана редакция 2 вместо 4.",
+                                    "evidence": [{"chunk_id": cell["cell_id"], "quote": ""}],
+                                },
+                                ensure_ascii=False,
+                            )
+                        },
+                    }
+                ]
+            },
+        )
+
+    llm = runtime(handler)
+    requirement = Requirement("N", "Редакция 4")
+    answer = llm.assess(requirement, [block])
+    result = verify_answer(requirement, answer, {block.id: block})
+    assert result.status is Status.NON_COMPLIANT
+    assert result.evidence[0].quote == "2"
+    assert result.evidence[0].location.row == 2
+    llm.client.close()
+
+
+def test_generation_can_only_reference_sources_present_in_the_request():
+    import json
+
+    from sirius_proj.domain.models import TableRow
+
+    def handler(request):
+        schema = json.loads(request.content)["response_format"]["schema"]
+        allowed = schema["properties"]["evidence"]["items"]["properties"]["chunk_id"]["enum"]
+        assert set(allowed) == {"p1", "row:cell1", "row:cell2"}
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": '{"status":"insufficient",'
+                            '"explanation":"Недостаточно данных","evidence":[]}'
+                        },
+                    }
+                ]
+            },
+        )
+
+    llm = runtime(handler)
+    llm.assess(
+        Requirement("R", "Проверка"),
+        [
+            Block("p1", "Вводный текст", Location("docx", paragraph=1)),
+            Block(
+                "row",
+                "Параметр | 2",
+                Location("docx", table=1, row=2),
+                TableRow(("Параметр", "Значение"), ("Параметр", "2")),
+            ),
+        ],
+    )
+    llm.client.close()
