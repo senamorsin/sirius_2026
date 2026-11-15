@@ -25,6 +25,13 @@ def main() -> int:
     args = parser.parse_args()
     settings = default_settings(args.data_dir)
     if args.command is None:
+        from .ui.startup import prepare_qt
+
+        try:
+            prepare_qt(args.data_dir)
+        except RuntimeError as error:
+            print(str(error), file=sys.stderr)
+            return 1
         from .gui import launch
 
         return launch(settings)
