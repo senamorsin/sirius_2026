@@ -1,0 +1,14 @@
+{
+  "C01": "compliant",
+  "C02": "compliant",
+  "C03": "compliant",
+  "C04": "compliant",
+  "N01": "non_compliant",
+  "N02": "non_compliant",
+  "N03": "non_compliant",
+  "N04": "non_compliant",
+  "U01": "insufficient",
+  "U02": "insufficient",
+  "U03": "insufficient",
+  "U04": "insufficient"
+}

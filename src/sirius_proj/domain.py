@@ -45,21 +45,22 @@ class Location:
     row: int | None = None
 
     def __post_init__(self) -> None:
-        if self.kind == "pdf":
-            valid = self.page is not None and self.page > 0
-            valid = valid and self.paragraph is None and self.table is None and self.row is None
-        elif self.kind == "docx":
-            paragraph = self.paragraph is not None and self.paragraph > 0
-            table = self.table is not None and self.row is not None
-            valid = (paragraph != table) and self.page is None
-            if table:
-                valid = valid and self.table > 0 and self.row > 0
-            if paragraph:
-                valid = valid and self.table is None and self.row is None
-        else:
-            valid = False
-        if not valid:
+        validators = {"pdf": self._valid_pdf, "docx": self._valid_docx}
+        validate = validators.get(self.kind)
+        if validate is None or not validate():
             raise ValueError("Некорректный адрес источника")
+
+    def _valid_pdf(self) -> bool:
+        return _positive_int(self.page) and all(
+            value is None for value in (self.paragraph, self.table, self.row)
+        )
+
+    def _valid_docx(self) -> bool:
+        if self.page is not None:
+            return False
+        if self.paragraph is not None:
+            return _positive_int(self.paragraph) and self.table is None and self.row is None
+        return _positive_int(self.table) and _positive_int(self.row)
 
     @property
     def label(self) -> str:
@@ -69,6 +70,10 @@ class Location:
         if self.table is not None:
             return f"{prefix}таблица {self.table}, строка {self.row}"
         return f"{prefix}абзац {self.paragraph}"
+
+
+def _positive_int(value: int | None) -> bool:
+    return type(value) is int and value > 0
 
 
 @dataclass(frozen=True)

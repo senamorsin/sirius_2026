@@ -21,12 +21,17 @@ def safe_text(value: str) -> str:
 
 
 def export_xlsx(
-    path: Path, results: Sequence[CheckResult], document: Path, warnings: Sequence[str],
+    path: Path,
+    results: Sequence[CheckResult],
+    document: Path,
+    warnings: Sequence[str],
 ) -> None:
     book = Workbook()
     summary = book.active
     summary.title = "Результаты"
-    summary.append(["ID", "Требование", "Статус", "Пояснение", "Цитаты", "Места", "Техническая ошибка"])
+    summary.append(
+        ["ID", "Требование", "Статус", "Пояснение", "Цитаты", "Места", "Техническая ошибка"]
+    )
     evidence_sheet = book.create_sheet("Доказательства")
     evidence_sheet.append(["ID требования", "ID фрагмента", "Цитата", "Место в документе"])
     for result in results:
@@ -37,7 +42,9 @@ def export_xlsx(
     info.append(["Создано", datetime.now().astimezone().isoformat(timespec="seconds")])
     for warning in warnings:
         info.append(["Предупреждение", safe_text(warning)])
-    info.append(["Ограничение", "Проверяется доступный текст. Итоговое решение принимает специалист."])
+    info.append(
+        ["Ограничение", "Проверяется доступный текст. Итоговое решение принимает специалист."]
+    )
     for sheet in book:
         _format_sheet(sheet)
     _save_atomic(book, path)
@@ -46,15 +53,30 @@ def export_xlsx(
 def _append_result(summary, evidence_sheet, result: CheckResult) -> None:
     req = result.requirement
     if isinstance(result, CheckFailure):
-        summary.append([safe_text(req.id), safe_text(req.text), "", "", "", "", safe_text(result.message)])
+        summary.append(
+            [safe_text(req.id), safe_text(req.text), "", "", "", "", safe_text(result.message)]
+        )
         return
-    summary.append([safe_text(req.id), safe_text(req.text), result.status.label,
-                    safe_text(result.explanation),
-                    safe_text("\n\n".join(item.quote for item in result.evidence)),
-                    safe_text("\n".join(item.location.label for item in result.evidence)), ""])
+    summary.append(
+        [
+            safe_text(req.id),
+            safe_text(req.text),
+            result.status.label,
+            safe_text(result.explanation),
+            safe_text("\n\n".join(item.quote for item in result.evidence)),
+            safe_text("\n".join(item.location.label for item in result.evidence)),
+            "",
+        ]
+    )
     for item in result.evidence:
-        evidence_sheet.append([safe_text(req.id), safe_text(item.chunk_id), safe_text(item.quote),
-                               safe_text(item.location.label)])
+        evidence_sheet.append(
+            [
+                safe_text(req.id),
+                safe_text(item.chunk_id),
+                safe_text(item.quote),
+                safe_text(item.location.label),
+            ]
+        )
 
 
 def _format_sheet(sheet) -> None:

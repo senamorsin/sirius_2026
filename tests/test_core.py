@@ -5,23 +5,36 @@ import pytest
 from docx import Document
 from openpyxl import load_workbook
 
-from sirius_proj.domain import (
-    Block, Citation, DocumentText, Evidence, Finding, Location, Requirement, Status,
-)
 from sirius_proj.documents import load_checklist, read_document
+from sirius_proj.domain import (
+    Block,
+    Evidence,
+    Finding,
+    Location,
+    Requirement,
+    Status,
+)
 from sirius_proj.evidence import parse_answer, verify_answer
 from sirius_proj.export import export_xlsx
 
 
 @pytest.fixture
 def block():
-    return Block("b1", "Напряжение питания составляет 220 В.\nМощность — 5 кВт.",
-                 Location("pdf", page=2))
+    return Block(
+        "b1", "Напряжение питания составляет 220 В.\nМощность — 5 кВт.", Location("pdf", page=2)
+    )
 
 
 def answer(status="compliant", quote="Напряжение питания составляет 220 В.", chunk_id="b1"):
-    return parse_answer(json.dumps({"status": status, "explanation": "Питание указано.",
-                                   "evidence": [{"chunk_id": chunk_id, "quote": quote}]}))
+    return parse_answer(
+        json.dumps(
+            {
+                "status": status,
+                "explanation": "Питание указано.",
+                "evidence": [{"chunk_id": chunk_id, "quote": quote}],
+            }
+        )
+    )
 
 
 def test_grounded_finding_keeps_program_source(block):
@@ -32,22 +45,27 @@ def test_grounded_finding_keeps_program_source(block):
 
 
 @pytest.mark.parametrize("status", ["compliant", "non_compliant"])
-@pytest.mark.parametrize("quote,chunk_id", [("Выдуманный текст", "b1"),
-                                           ("Напряжение питания составляет 220 В.", "alien")])
+@pytest.mark.parametrize(
+    "quote,chunk_id",
+    [("Выдуманный текст", "b1"), ("Напряжение питания составляет 220 В.", "alien")],
+)
 def test_ungrounded_decision_is_unknown(block, status, quote, chunk_id):
-    result = verify_answer(Requirement("1", "Питание 220 В"),
-                           answer(status, quote, chunk_id), {"b1": block})
+    result = verify_answer(
+        Requirement("1", "Питание 220 В"), answer(status, quote, chunk_id), {"b1": block}
+    )
     assert result.status is Status.INSUFFICIENT
     assert not result.evidence
     assert "цитат" in result.explanation.lower() or "фрагмент" in result.explanation.lower()
 
 
 def test_whitespace_is_normalized_but_words_are_not(block):
-    result = verify_answer(Requirement("1", "Мощность 5 кВт"),
-                           answer(quote="220 В. Мощность — 5 кВт."), {"b1": block})
+    result = verify_answer(
+        Requirement("1", "Мощность 5 кВт"), answer(quote="220 В. Мощность — 5 кВт."), {"b1": block}
+    )
     assert result.status is Status.COMPLIANT
-    bad = verify_answer(Requirement("1", "Мощность 7 кВт"),
-                        answer(quote="Мощность — 7 кВт."), {"b1": block})
+    bad = verify_answer(
+        Requirement("1", "Мощность 7 кВт"), answer(quote="Мощность — 7 кВт."), {"b1": block}
+    )
     assert bad.status is Status.INSUFFICIENT
 
 
@@ -56,8 +74,15 @@ def test_definitive_result_requires_evidence():
         Finding(Requirement("1", "Требование"), Status.COMPLIANT, "Вывод", ())
 
 
-@pytest.mark.parametrize("raw", ['{}', 'не JSON', '{"status":"unknown"}',
-                                '{"status":"compliant","explanation":"x","evidence":[]}'])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "{}",
+        "не JSON",
+        '{"status":"unknown"}',
+        '{"status":"compliant","explanation":"x","evidence":[]}',
+    ],
+)
 def test_malformed_model_answer_is_rejected(raw):
     with pytest.raises(ValueError):
         parse_answer(raw)
@@ -74,6 +99,7 @@ def test_csv_bom_and_duplicate_ids(tmp_path):
 
 def test_docx_retains_order_and_locations(tmp_path):
     doc = Document()
+    doc.add_heading("Шкаф ТК-101", 0)
     doc.add_heading("Питание", level=1)
     doc.add_paragraph("Вводный абзац")
     table = doc.add_table(rows=1, cols=2)
@@ -83,15 +109,21 @@ def test_docx_retains_order_and_locations(tmp_path):
     path = tmp_path / "report.docx"
     doc.save(path)
     parsed = read_document(path)
-    assert [b.text for b in parsed.blocks] == ["Питание", "Вводный абзац", "Напряжение | 220 В", "Заключение"]
-    assert parsed.blocks[2].location.table == 1
-    assert parsed.blocks[2].location.row == 1
-    assert "Питание" in parsed.blocks[2].location.heading
-    assert parsed.blocks[3].location.paragraph == 3
+    assert [b.text for b in parsed.blocks][1:] == [
+        "Питание",
+        "Вводный абзац",
+        "Напряжение | 220 В",
+        "Заключение",
+    ]
+    assert parsed.blocks[3].location.table == 1
+    assert parsed.blocks[3].location.row == 1
+    assert "Питание" in parsed.blocks[3].location.heading
+    assert "ТК-101" in parsed.blocks[3].location.heading
+    assert parsed.blocks[4].location.paragraph == 4
 
 
 def test_export_preserves_evidence_and_neutralizes_formulas(tmp_path):
-    req = Requirement("=1+1", "=HYPERLINK(\"http://example.test\")")
+    req = Requirement("=1+1", '=HYPERLINK("http://example.test")')
     location = Location("pdf", page=2)
     result = Finding(req, Status.COMPLIANT, "Указано", (Evidence("b1", "220 В", location),))
     path = tmp_path / "result.xlsx"

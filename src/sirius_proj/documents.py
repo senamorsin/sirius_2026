@@ -1,6 +1,7 @@
 """File boundaries: validate once and return domain values."""
 
 import csv
+import re
 from pathlib import Path
 
 from docx import Document
@@ -14,7 +15,9 @@ def load_checklist(path: Path) -> tuple[Requirement, ...]:
     with path.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames is None or not {"id", "requirement"} <= set(reader.fieldnames):
-            raise ValueError("CSV должен содержать заголовки id,requirement (UTF-8, разделитель — запятая)")
+            raise ValueError(
+                "CSV должен содержать заголовки id,requirement (UTF-8, разделитель — запятая)"
+            )
         requirements = []
         seen = set()
         for number, row in enumerate(reader, 2):
@@ -49,16 +52,19 @@ def read_document(path: Path) -> DocumentText:
     except Exception as error:
         raise ValueError(f"Не удалось прочитать {path.name}: {error}") from error
     if not document.blocks:
-        raise ValueError("В документе нет доступного текста. Для скана требуется OCR, он не входит в MVP.")
+        raise ValueError(
+            "В документе нет доступного текста. Для скана требуется OCR, он не входит в MVP."
+        )
     return document
 
 
 def _read_docx(path: Path) -> DocumentText:
     document = Document(path)
     blocks = []
-    heading = ""
+    headings = {}
     paragraph_number = table_number = 0
     for item in document.iter_inner_content():
+        heading = " / ".join(headings.values())
         if isinstance(item, Table):
             table_number += 1
             blocks.extend(_table_blocks(item, table_number, heading))
@@ -67,11 +73,21 @@ def _read_docx(path: Path) -> DocumentText:
             text = item.text.strip()
             if not text:
                 continue
-            if item.style and item.style.name.startswith("Heading"):
-                heading = text
+            headings = _update_headings(headings, item.style.style_id if item.style else "", text)
+            heading = " / ".join(headings.values())
             location = Location("docx", heading=heading, paragraph=paragraph_number)
             blocks.append(Block(f"p{paragraph_number}", text, location))
     return DocumentText(path, tuple(blocks))
+
+
+def _update_headings(headings: dict[int, str], style: str, text: str) -> dict[int, str]:
+    match = re.fullmatch(r"Heading(\d+)", style)
+    if style == "Title":
+        return {0: text}
+    if match:
+        level = int(match[1])
+        return {**{key: value for key, value in headings.items() if key < level}, level: text}
+    return headings
 
 
 def _table_blocks(table: Table, number: int, heading: str) -> list[Block]:

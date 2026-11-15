@@ -29,16 +29,20 @@ def parse_answer(raw: str) -> ModelAnswer:
 
 
 def verify_answer(
-    requirement: Requirement, answer: ModelAnswer, blocks: Mapping[str, Block],
+    requirement: Requirement,
+    answer: ModelAnswer,
+    blocks: Mapping[str, Block],
 ) -> Finding:
     evidence = []
     for citation in answer.evidence:
         block = blocks.get(citation.chunk_id)
         if block is None or normalize(citation.quote) not in normalize(block.text):
             return Finding(
-                requirement, Status.INSUFFICIENT,
+                requirement,
+                Status.INSUFFICIENT,
                 "Цитата или идентификатор фрагмента не подтверждены исходным текстом. "
-                "Требуется проверка специалистом.", (),
+                "Требуется проверка специалистом.",
+                (),
             )
         item = Evidence(citation.chunk_id, citation.quote, block.location)
         if item not in evidence:

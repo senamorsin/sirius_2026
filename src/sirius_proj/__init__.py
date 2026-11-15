@@ -1,2 +1,7 @@
+"""Local technical document review."""
+
+
 def main() -> None:
-    print("Hello from sirius-proj!")
+    from .cli import main as entrypoint
+
+    raise SystemExit(entrypoint())
