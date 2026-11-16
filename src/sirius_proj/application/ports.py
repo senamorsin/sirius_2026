@@ -1,4 +1,4 @@
-"""Only the boundaries used by application policy; no service locator."""
+"""Правила вызова поиска и модели, которые использует проверка документа."""
 
 from collections.abc import Sequence
 from typing import Protocol

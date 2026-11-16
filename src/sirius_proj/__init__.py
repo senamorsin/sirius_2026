@@ -1,4 +1,4 @@
-"""Local technical document review."""
+"""Локальная проверка технических документов по чек-листу."""
 
 
 def main() -> None:

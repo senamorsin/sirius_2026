@@ -1,4 +1,4 @@
-"""XLSX adapter: safe text cells, all evidence, atomic destination replacement."""
+"""Сохранение результатов и всех цитат в Excel. Готовый файл заменяет старый после записи."""
 
 import os
 import re

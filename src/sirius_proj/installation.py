@@ -1,4 +1,4 @@
-"""Install managed components on first use; never receives documents or checklists."""
+"""Подготовка моделей и других компонентов. Документы и чек-листы сюда не передаются."""
 
 import ctypes
 import hashlib
@@ -25,7 +25,7 @@ BUILD = "b12420"
 
 @contextmanager
 def component_lock(root: Path):
-    """OS releases the lock after a crash; the lock file need not be deleted."""
+    """После сбоя система снимает блокировку сама. Файл блокировки можно оставить."""
     with (root / ".installation.lock").open("a+b") as stream:
         if sys.platform == "win32":
             import msvcrt

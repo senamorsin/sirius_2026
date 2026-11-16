@@ -1,3 +1,5 @@
+"""Проверки окна: результаты, фильтры, экспорт и фоновые потоки."""
+
 from pathlib import Path
 from time import monotonic
 from types import SimpleNamespace

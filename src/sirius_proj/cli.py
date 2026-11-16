@@ -1,4 +1,4 @@
-"""GUI by default, the identical application scenario for reproducible CLI runs."""
+"""Запуск окна или команд в терминале. Оба варианта используют одну проверку документа."""
 
 import argparse
 import json

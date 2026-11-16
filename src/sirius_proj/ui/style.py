@@ -1,3 +1,5 @@
+"""Цвета статусов и оформление окна."""
+
 from sirius_proj.domain.models import Status
 
 COLORS = {

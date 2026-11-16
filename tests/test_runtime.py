@@ -1,3 +1,5 @@
+"""Проверки запуска и остановки сервера модели, тайм-аутов и выбора GPU."""
+
 from dataclasses import replace
 
 import httpx
@@ -75,7 +77,7 @@ def test_model_startup_timeout_cleans_up(settings, monkeypatch):
     process, _ = mock_runtime(monkeypatch, code=503)
     with pytest.raises(TimeoutError):
         with llama.LlamaServer(replace(settings, startup_timeout=0.01)):
-            pytest.fail("server is not ready")
+            pytest.fail("Сервер ещё не готов к работе")
     assert process.terminated
 
 
@@ -83,7 +85,7 @@ def test_cancel_during_startup_cleans_up(settings, monkeypatch):
     process, _ = mock_runtime(monkeypatch)
     with pytest.raises(InterruptedError):
         with llama.LlamaServer(settings, lambda: True):
-            pytest.fail("cancelled")
+            pytest.fail("Запуск сервера должен быть отменён")
     assert process.terminated
 
 
@@ -95,7 +97,7 @@ def test_process_crash_explains_startup_failure(settings, monkeypatch):
     mock_runtime(monkeypatch, process=DeadProcess())
     with pytest.raises(RuntimeError, match="завершился"):
         with llama.LlamaServer(settings):
-            pytest.fail("dead server")
+            pytest.fail("Процесс сервера уже завершился")
 
 
 def test_cpu_mode_disables_gpu_operation_offload(settings):
@@ -123,13 +125,13 @@ def test_device_detection_failure_closes_resources(settings, monkeypatch):
     mock_runtime(monkeypatch)
 
     def fail(*args):
-        raise RuntimeError("Device probe failed")
+        raise RuntimeError("Не удалось определить доступные устройства")
 
     monkeypatch.setattr(llama, "device_arguments", fail)
     server = llama.LlamaServer(settings)
-    with pytest.raises(RuntimeError, match="Device probe"):
+    with pytest.raises(RuntimeError, match="Не удалось определить"):
         with server:
-            pytest.fail("No server should be started")
+            pytest.fail("Сервер не должен запускаться после ошибки выбора устройства")
     assert server.log.closed
     assert server.client.is_closed
     assert server.process is None

@@ -1,4 +1,4 @@
-"""File boundaries: validate once and return domain values."""
+"""Чтение DOCX, PDF и CSV. Проверяем данные и сохраняем текст вместе с адресами источников."""
 
 import csv
 import re

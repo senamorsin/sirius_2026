@@ -1,4 +1,4 @@
-# Python-generated files
+# Файлы, которые создают Python и инструменты сборки
 __pycache__/
 mutants/
 *.py[oc]
@@ -7,10 +7,10 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
+# Окружение с установленными библиотеками
 .venv
 
-# Local models, runtime, reports and private input
+# Локальные модели, компоненты, отчёты и личные документы
 models/
 runtime/
 private/

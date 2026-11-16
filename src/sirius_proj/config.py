@@ -1,4 +1,4 @@
-"""One place for runtime defaults and input configuration."""
+"""Настройки приложения: пути к компонентам, режим работы и ограничения."""
 
 import os
 import sys

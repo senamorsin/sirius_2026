@@ -1,3 +1,5 @@
+"""Проверки зависимостей между частями приложения."""
+
 import ast
 from pathlib import Path
 

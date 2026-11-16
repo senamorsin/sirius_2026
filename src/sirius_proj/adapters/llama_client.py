@@ -1,4 +1,4 @@
-"""llama.cpp HTTP/JSON adapter. Process ownership lives in llama_process."""
+"""Запросы к локальной модели и разбор ответов. Сервер запускается в llama_process."""
 
 import json
 import re
@@ -213,6 +213,7 @@ class LlamaJudge:
         self.output_tokens = output_tokens
 
     def assess(self, requirement: Requirement, chunks: Sequence[Block]) -> ModelAnswer:
+        """Передаёт требование и найденный текст модели, затем разбирает её ответ."""
         data = {"requirement": requirement.text, **document_context(chunks)}
         cells = {
             cell["cell_id"]: Citation(block.id, cell["text"])

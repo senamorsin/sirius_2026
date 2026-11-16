@@ -1,4 +1,4 @@
-"""Qt presentation. The worker owns adapters; widgets receive immutable values."""
+"""Главное окно. Рабочий поток управляет моделями и передаёт окну готовые результаты."""
 
 from collections.abc import Callable
 from dataclasses import replace

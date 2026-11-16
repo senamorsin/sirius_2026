@@ -1,4 +1,4 @@
-"""The complete use case. All I/O is supplied through its constructor."""
+"""Проверка документа целиком. Функции чтения, поиска и оценки передаются при создании."""
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -27,6 +27,7 @@ class ReviewService:
         on_progress: Callable[[int, int, str], None] = lambda done, total, text: None,
         cancelled: Callable[[], bool] = lambda: False,
     ) -> CheckReport:
+        """Читает файлы, строит поиск, проверяет требования и собирает отчёт."""
         started = perf_counter()
         on_progress(0, 0, "Чтение документа и чек-листа…")
         document = self.read_document(document_path)

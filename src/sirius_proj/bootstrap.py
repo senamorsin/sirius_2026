@@ -1,4 +1,4 @@
-"""The single composition root for concrete infrastructure and entry points."""
+"""Сборка приложения: подключаем чтение файлов, поиск, модель, окно и экспорт."""
 
 from collections.abc import Callable
 from pathlib import Path

@@ -1,3 +1,5 @@
+"""Проверки поиска фрагментов, обработки требований и отмены."""
+
 import threading
 from pathlib import Path
 
@@ -97,9 +99,9 @@ class Judge:
 def test_programming_error_is_not_presented_as_a_document_result():
     class BuggyIndex:
         def retrieve(self, text):
-            raise RuntimeError("Internal index bug")
+            raise RuntimeError("Внутренняя ошибка поиска")
 
-    with pytest.raises(RuntimeError, match="Internal index bug"):
+    with pytest.raises(RuntimeError, match="Внутренняя ошибка поиска"):
         check_requirements(
             DocumentText(Path("report.pdf"), blocks()),
             (Requirement("1", "Питание"),),

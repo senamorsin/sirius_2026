@@ -1,4 +1,4 @@
-"""Hybrid retrieval. The document embedding matrix is built exactly once."""
+"""Поиск по смыслу, словам и обозначениям. Векторы документа считаем один раз за проверку."""
 
 import re
 from collections import Counter
@@ -78,8 +78,8 @@ class HybridIndex:
         self.vectors = encoder.encode(texts)
         self.terms = tuple(identifiers(text) for text in texts)
         frequencies = Counter(term for terms in self.terms for term in terms)
-        # Rare identifiers can rescue an exact match; a repeated object name cannot
-        # displace the actual parameter simply because its paragraph omits that name.
+        # Редкое обозначение помогает найти нужный фрагмент. Частое имя объекта
+        # не должно вытеснять полезный абзац, в котором это имя не повторили.
         self.identifier_weights = {
             term: 3 * (log1p((len(chunks) - count + 0.5) / (count + 0.5)) / log1p(len(chunks))) ** 3
             for term, count in frequencies.items()

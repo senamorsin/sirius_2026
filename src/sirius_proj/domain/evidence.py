@@ -1,4 +1,4 @@
-"""Pure evidence policy. A model never supplies source locations."""
+"""Проверка цитат по исходному тексту. Адреса источников берём из документа."""
 
 import re
 from collections.abc import Mapping
@@ -15,6 +15,7 @@ def verify_answer(
     answer: ModelAnswer,
     blocks: Mapping[str, Block],
 ) -> Finding:
+    """Сверяет цитаты с переданными фрагментами и добавляет адреса источников."""
     evidence = []
     for citation in answer.evidence:
         block = blocks.get(citation.chunk_id)

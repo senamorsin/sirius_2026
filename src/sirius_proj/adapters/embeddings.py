@@ -1,4 +1,4 @@
-"""Local E5 ONNX adapter, using masked mean pooling and L2 normalization."""
+"""Получение векторов текста через локальную E5. Длину каждого вектора приводим к единице."""
 
 from collections.abc import Callable, Sequence
 from dataclasses import replace

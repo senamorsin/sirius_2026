@@ -1,4 +1,4 @@
-"""Resolve native desktop dependencies before Qt can abort the process."""
+"""Проверка системных библиотек перед открытием окна Qt."""
 
 import ctypes
 import os

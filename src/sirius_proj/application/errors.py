@@ -1,2 +1,2 @@
 class CheckError(RuntimeError):
-    """Expected failure of a check adapter, safe to present as a per-item error."""
+    """Ошибка одного пункта, после которой можно продолжить проверку остальных."""

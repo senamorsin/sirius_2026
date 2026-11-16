@@ -1,3 +1,5 @@
+"""Проверки загрузки компонентов, контрольных сумм, отмены и повторной установки."""
+
 import io
 import os
 import tarfile
@@ -111,6 +113,6 @@ def test_only_one_installer_can_write_components(tmp_path):
     with component_lock(tmp_path):
         with pytest.raises(RuntimeError, match="уже выполняется"):
             with component_lock(tmp_path):
-                pytest.fail("Second installer must not write shared files")
+                pytest.fail("Второй установщик не должен менять общие файлы")
     with component_lock(tmp_path):
         pass

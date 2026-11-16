@@ -1,1 +1,1 @@
-"""Desktop presentation; imports Qt only when the GUI is requested."""
+"""Окно приложения. Qt загружается только при запуске графического интерфейса."""

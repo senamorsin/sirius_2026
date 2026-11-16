@@ -1,3 +1,5 @@
+"""Проверки неверных входных данных и ошибок чтения и сохранения."""
+
 from dataclasses import replace
 from pathlib import Path
 
@@ -112,7 +114,7 @@ def test_atomic_export_failure_preserves_old_destination(tmp_path, monkeypatch):
     from openpyxl import Workbook
 
     def fail(*args):
-        raise OSError("disk full")
+        raise OSError("На диске нет места")
 
     monkeypatch.setattr(Workbook, "save", fail)
     with pytest.raises(OSError):

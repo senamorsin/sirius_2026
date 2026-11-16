@@ -1,4 +1,4 @@
-"""Result rendering. The table is the only owner of its row-to-result mapping."""
+"""Таблица результатов и показ цитат. Связь строк с результатами хранится в самой таблице."""
 
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem

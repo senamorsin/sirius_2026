@@ -1,3 +1,5 @@
+"""Проверки векторизации, разбиения текста и запуска общего сценария."""
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -44,7 +46,7 @@ def test_e5_masked_pooling_and_query_prefix(encoder):
     result = encoder.encode(["word", "word word"])
     assert result.shape == (2, 2)
     assert np.allclose(np.linalg.norm(result, axis=1), 1)
-    expected = np.array([11 / 3, 1])  # passage=4, colon=5, word=2
+    expected = np.array([11 / 3, 1])  # В тестовом словаре: passage=4, двоеточие=5, word=2.
     expected /= np.linalg.norm(expected)
     assert np.allclose(result[0], expected)
     query = encoder.encode(["word"], query=True)

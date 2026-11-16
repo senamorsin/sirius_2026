@@ -1,4 +1,4 @@
-"""Immutable domain values. No GUI, filesystem or model dependencies."""
+"""Данные требований и результатов. Здесь нет работы с окном, файлами или моделями."""
 
 from dataclasses import dataclass
 from enum import StrEnum
@@ -91,7 +91,7 @@ class TableRow:
         for cell in self.cells:
             left, right = max(0, start - cursor), min(len(cell), end - cursor)
             cells.append(cell[left:right] if right > left else "")
-            cursor += len(cell) + 3  # source cells are separated by ' | '
+            cursor += len(cell) + 3  # В исходной строке между ячейками стоит ' | '.
         return TableRow(self.headers, tuple(cells), self.caption)
 
 

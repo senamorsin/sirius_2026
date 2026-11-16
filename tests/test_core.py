@@ -1,3 +1,5 @@
+"""Проверки статусов, цитат, чтения документов и отчёта Excel."""
+
 import json
 from pathlib import Path
 

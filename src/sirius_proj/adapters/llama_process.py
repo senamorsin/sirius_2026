@@ -1,4 +1,4 @@
-"""Own the local llama.cpp process and release every resource on all exit paths."""
+"""Запуск и остановка сервера llama.cpp. При ошибке также закрываем процесс и соединения."""
 
 import os
 import re

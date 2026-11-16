@@ -1,3 +1,5 @@
+"""Проверки системных библиотек Qt и запуска настоящего окна X11."""
+
 import os
 import subprocess
 import sys
@@ -12,7 +14,7 @@ def test_missing_xcb_dependency_has_actionable_message(tmp_path, monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
     monkeypatch.setattr(
         "sirius_proj.ui.startup.ctypes.CDLL",
-        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("missing shared library")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("Не найдена системная библиотека")),
     )
     with pytest.raises(RuntimeError, match="sirius-proj install"):
         prepare_qt(tmp_path)
@@ -26,7 +28,7 @@ def test_offscreen_tests_do_not_need_xcb(tmp_path, monkeypatch):
     prepare_qt(tmp_path)
 
 
-@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Requires a real X11 desktop")
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="Нужна настоящая графическая сессия X11")
 def test_cli_opens_a_real_desktop_window():
     code = """
 import sys

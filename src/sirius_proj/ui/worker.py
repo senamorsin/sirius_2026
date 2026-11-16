@@ -1,4 +1,4 @@
-"""Only Qt threading and cancellation; no concrete model or file adapters."""
+"""Фоновые потоки установки и проверки: передача результатов в окно и отмена работы."""
 
 import threading
 from collections.abc import Callable

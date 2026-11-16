@@ -1,3 +1,5 @@
+"""Проверки заголовков, ячеек и адресов строк таблиц."""
+
 import json
 
 from docx import Document

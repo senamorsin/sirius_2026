@@ -1,4 +1,4 @@
-"""Application orchestration; independent of Qt and concrete adapters."""
+"""Проверка требований по очереди. Работает независимо от окна и выбранных библиотек."""
 
 from collections.abc import Callable, Sequence
 from time import perf_counter
@@ -25,6 +25,7 @@ def check_requirements(
     on_progress: Callable[[int, int, str], None] = lambda done, total, message: None,
     cancelled: Callable[[], bool] = lambda: False,
 ) -> CheckReport:
+    """Проверяет требования по одному и сообщает о каждом готовом результате."""
     started = perf_counter()
     results = []
     for number, requirement in enumerate(requirements, 1):
