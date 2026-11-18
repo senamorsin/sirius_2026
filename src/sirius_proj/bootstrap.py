@@ -13,30 +13,34 @@ def create_service(settings: Settings) -> ReviewService:
     from sirius_proj.adapters.documents import load_checklist, read_document
     from sirius_proj.adapters.llama_process import LlamaServer
 
-    settings.validate()
-
     def build_index(blocks: tuple[Block, ...], cancelled: Callable[[], bool]) -> SearchIndex:
         from sirius_proj.adapters.embeddings import E5Encoder
-        from sirius_proj.adapters.search import HybridIndex
+        from sirius_proj.adapters.retrieval import SectionIndex
 
-        encoder = E5Encoder(settings.embedding_dir)
-        chunks = encoder.split(blocks, cancelled)
-        if cancelled():
-            raise InterruptedError("Проверка отменена")
-        return HybridIndex(chunks, encoder)
+        return SectionIndex(blocks, E5Encoder(settings.embedding_dir), cancelled)
 
     return ReviewService(
         read_document,
         load_checklist,
         build_index,
         lambda cancelled: LlamaServer(settings, cancelled),
+        force_rag=settings.force_rag,
     )
 
 
 def write_report(path: Path, report: CheckReport) -> None:
-    from sirius_proj.adapters.xlsx import write_report as save
+    from sirius_proj.adapters.checklist import write_docx_report
+    from sirius_proj.adapters.xlsx import write_report as write_xlsx_report
 
-    save(path, report)
+    inputs = (report.document.path, report.checklist_path)
+    if any(source and path.resolve() == source.resolve() for source in inputs):
+        raise ValueError("Выберите другое имя, чтобы сохранить исходные файлы.")
+    if path.suffix.lower() == ".docx":
+        write_docx_report(path, report)
+    elif path.suffix.lower() == ".xlsx":
+        write_xlsx_report(path, report)
+    else:
+        raise ValueError("Отчёт можно сохранить в формате XLSX или DOCX.")
 
 
 def launch_gui(settings: Settings) -> int:

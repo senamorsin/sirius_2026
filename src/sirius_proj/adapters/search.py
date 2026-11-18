@@ -33,10 +33,17 @@ STOP_WORDS = frozenset(
     "в и на к по из с а о об для что это или не должна должен должно должны "
     "быть содержать записке документе отчёте отчете требование".split()
 )
+RUSSIAN_WORD = re.compile(r"[а-яё]+")
 
 
 def words(text: str) -> Counter[str]:
-    return Counter(word for word in re.findall(r"\w+", text.casefold()) if word not in STOP_WORDS)
+    # Начало длинного русского слова помогает сопоставить разные падежи.
+    # Точные технические обозначения отдельно сравнивает identifiers().
+    return Counter(
+        word[:7] if RUSSIAN_WORD.fullmatch(word) else word
+        for word in re.findall(r"\w+", text.casefold())
+        if word not in STOP_WORDS
+    )
 
 
 def lexical_score(query: Counter, counts: Counter, idf: dict[str, float], average: float) -> float:

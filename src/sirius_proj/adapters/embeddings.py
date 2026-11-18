@@ -1,14 +1,11 @@
 """Получение векторов текста через локальную E5. Длину каждого вектора приводим к единице."""
 
-from collections.abc import Callable, Sequence
-from dataclasses import replace
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
-
-from sirius_proj.domain.models import Block
 
 
 class E5Encoder:
@@ -17,9 +14,6 @@ class E5Encoder:
         for name in ("model.onnx", "tokenizer.json"):
             if not (folder / name).is_file():
                 raise ValueError(f"Нет файла E5 {folder / name}. Выполните sirius-proj install")
-        self.raw_tokenizer = Tokenizer.from_file(str(folder / "tokenizer.json"))
-        self.raw_tokenizer.no_truncation()
-        self.raw_tokenizer.no_padding()
         self.tokenizer = Tokenizer.from_file(str(folder / "tokenizer.json"))
         self.tokenizer.enable_truncation(max_length=512)
         self.tokenizer.enable_padding(pad_id=1, pad_token="<pad>")
@@ -53,32 +47,3 @@ class E5Encoder:
         pooled = (hidden * mask).sum(axis=1) / mask.sum(axis=1)
         pooled /= np.maximum(np.linalg.norm(pooled, axis=1, keepdims=True), 1e-12)
         return pooled.astype(np.float32)
-
-    def split(
-        self,
-        blocks: Sequence[Block],
-        cancelled: Callable[[], bool] = lambda: False,
-    ) -> tuple[Block, ...]:
-        chunks = []
-        for block in blocks:
-            if cancelled():
-                raise InterruptedError("Проверка отменена")
-            offsets = self.raw_tokenizer.encode(block.text, add_special_tokens=False).offsets
-            if len(offsets) <= 400:
-                chunks.append(block)
-                continue
-            for number, start in enumerate(range(0, len(offsets), 350), 1):
-                end = min(start + 400, len(offsets))
-                text = block.text[offsets[start][0] : offsets[end - 1][1]].strip()
-                if text:
-                    table = (
-                        block.table.clipped(offsets[start][0], offsets[end - 1][1])
-                        if block.table
-                        else None
-                    )
-                    chunks.append(
-                        replace(block, id=f"{block.id}:c{number}", text=text, table=table)
-                    )
-                if end == len(offsets):
-                    break
-        return tuple(chunks)

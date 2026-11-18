@@ -5,9 +5,11 @@ from time import perf_counter
 
 from sirius_proj.application.errors import CheckError
 from sirius_proj.application.ports import Judge, SearchIndex
+from sirius_proj.application.structure import check_layout
 from sirius_proj.domain.evidence import verify_answer
 from sirius_proj.domain.models import (
     CheckFailure,
+    CheckKind,
     CheckReport,
     CheckResult,
     DocumentText,
@@ -18,8 +20,8 @@ from sirius_proj.domain.models import (
 def check_requirements(
     document: DocumentText,
     requirements: Sequence[Requirement],
-    index: SearchIndex,
-    judge: Judge,
+    index: SearchIndex | None,
+    judge: Judge | None,
     *,
     on_result: Callable[[CheckResult], None] = lambda result: None,
     on_progress: Callable[[int, int, str], None] = lambda done, total, message: None,
@@ -33,9 +35,15 @@ def check_requirements(
             break
         on_progress(number - 1, len(requirements), f"Проверка {requirement.id}: {requirement.text}")
         try:
-            chunks = index.retrieve(requirement.text)
-            answer = judge.assess(requirement, chunks)
-            result = verify_answer(requirement, answer, {chunk.id: chunk for chunk in chunks})
+            if requirement.kind is not CheckKind.CONTENT:
+                result = check_layout(requirement, document)
+            else:
+                if index is None or judge is None:
+                    raise RuntimeError("Смысловая проверка требует поиска и модели.")
+                query = "\n".join(filter(None, (requirement.text, requirement.comment)))
+                chunks = index.retrieve(query)
+                answer = judge.assess(requirement, chunks)
+                result = verify_answer(requirement, answer, {chunk.id: chunk for chunk in chunks})
         except CheckError as error:
             result = CheckFailure(requirement, str(error))
         results.append(result)

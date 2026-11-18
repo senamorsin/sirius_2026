@@ -109,13 +109,15 @@ class MainWindow(QMainWindow):
         self.document_edit = QLineEdit()
         self.document_edit.setPlaceholderText("Отчёт подрядчика · DOCX или PDF с текстовым слоем")
         self.checklist_edit = QLineEdit()
-        self.checklist_edit.setPlaceholderText("CSV в UTF-8 · колонки id,requirement")
+        self.checklist_edit.setPlaceholderText("Пустой шаблон DOCX или CSV с требованиями")
         doc_button = QPushButton("Выбрать…")
         doc_button.clicked.connect(
             lambda: self._choose(self.document_edit, "Документы (*.docx *.pdf)")
         )
         list_button = QPushButton("Выбрать…")
-        list_button.clicked.connect(lambda: self._choose(self.checklist_edit, "Чек-лист (*.csv)"))
+        list_button.clicked.connect(
+            lambda: self._choose(self.checklist_edit, "Чек-лист (*.docx *.csv)")
+        )
         form.addRow("Документ", path_control(self.document_edit, doc_button))
         form.addRow("Чек-лист", path_control(self.checklist_edit, list_button))
         self.settings_toggle = QPushButton("Настройки локальных моделей ▸")
@@ -152,6 +154,9 @@ class MainWindow(QMainWindow):
         self.gpu_check = QCheckBox("Использовать GPU (снимите для режима CPU)")
         self.gpu_check.setChecked(True)
         form.addRow("", self.gpu_check)
+        self.rag_check = QCheckBox("Использовать поиск фрагментов даже для коротких отчётов (RAG)")
+        self.rag_check.setChecked(self.defaults.force_rag)
+        form.addRow("", self.rag_check)
         self.prepare_button = QPushButton("Подготовить компоненты")
         self.prepare_button.setEnabled(self.installer is not None)
         self.prepare_button.clicked.connect(self.prepare_components)
@@ -224,7 +229,7 @@ class MainWindow(QMainWindow):
             self.filter.addItem(status.label, status.value)
         self.filter.addItem("Технические ошибки", "error")
         self.filter.currentIndexChanged.connect(self._filter_rows)
-        self.export_button = QPushButton("Сохранить Excel")
+        self.export_button = QPushButton("Сохранить отчёт")
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self.save_report)
         for widget in (self.run_button, self.cancel_button, self.summary):
@@ -275,12 +280,13 @@ class MainWindow(QMainWindow):
             model_file=Path(self.model_edit.text()),
             embedding_dir=Path(self.embedding_edit.text()),
             use_gpu=self.gpu_check.isChecked(),
+            force_rag=self.rag_check.isChecked(),
         )
         document = Path(self.document_edit.text())
         checklist = Path(self.checklist_edit.text())
         try:
             if not document.is_file() or not checklist.is_file():
-                raise ValueError("Выберите существующие документ и CSV-чек-лист")
+                raise ValueError("Выберите существующие документ и чек-лист")
             settings.validate()
             service = self.service_factory(settings)
         except ValueError as error:
@@ -363,14 +369,17 @@ class MainWindow(QMainWindow):
     def save_report(self):
         if self.report is None:
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить отчёт", "Проверка.xlsx", "Excel (*.xlsx)"
-        )
+        word = self.report.checklist_path and self.report.checklist_path.suffix.lower() == ".docx"
+        filters = "Word (*.docx);;Excel (*.xlsx)" if word else "Excel (*.xlsx)"
+        default = "Проверка.docx" if word else "Проверка.xlsx"
+        path, selected = QFileDialog.getSaveFileName(self, "Сохранить отчёт", default, filters)
         if not path:
             return
         destination = Path(path)
-        if destination.suffix.lower() != ".xlsx":
-            destination = destination.with_suffix(".xlsx")
+        if destination.suffix.lower() not in (".docx", ".xlsx"):
+            destination = destination.with_suffix(
+                ".docx" if selected.startswith("Word") else ".xlsx"
+            )
         try:
             self.report_writer(destination, self.report)
             self.message.setText(f"Отчёт сохранён: {destination}")

@@ -8,6 +8,7 @@ from typing import Literal
 
 class Status(StrEnum):
     COMPLIANT = "compliant"
+    PARTIAL = "partial"
     NON_COMPLIANT = "non_compliant"
     INSUFFICIENT = "insufficient"
 
@@ -15,6 +16,7 @@ class Status(StrEnum):
     def label(self) -> str:
         return {
             Status.COMPLIANT: "Соответствует",
+            Status.PARTIAL: "Частично соответствует",
             Status.NON_COMPLIANT: "Не соответствует",
             Status.INSUFFICIENT: "Недостаточно данных",
         }[self]
@@ -25,10 +27,18 @@ def require_text(value: str, name: str) -> None:
         raise ValueError(f"{name}: требуется непустой текст")
 
 
+class CheckKind(StrEnum):
+    CONTENT = "RAG"
+    METADATA = "Метаданные"
+    STRUCTURE = "Структура/оглавление"
+
+
 @dataclass(frozen=True)
 class Requirement:
     id: str
     text: str
+    comment: str = ""
+    kind: CheckKind = CheckKind.CONTENT
 
     def __post_init__(self) -> None:
         require_text(self.id, "Идентификатор")
@@ -37,7 +47,7 @@ class Requirement:
 
 @dataclass(frozen=True)
 class Location:
-    kind: Literal["pdf", "docx"]
+    kind: Literal["pdf", "docx", "layout"]
     page: int | None = None
     heading: str = ""
     paragraph: int | None = None
@@ -45,7 +55,11 @@ class Location:
     row: int | None = None
 
     def __post_init__(self) -> None:
-        validators = {"pdf": self._valid_pdf, "docx": self._valid_docx}
+        validators = {
+            "pdf": self._valid_pdf,
+            "docx": self._valid_docx,
+            "layout": self._valid_layout,
+        }
         validate = validators.get(self.kind)
         if validate is None or not validate():
             raise ValueError("Некорректный адрес источника")
@@ -62,8 +76,15 @@ class Location:
             return _positive_int(self.paragraph) and self.table is None and self.row is None
         return _positive_int(self.table) and _positive_int(self.row)
 
+    def _valid_layout(self) -> bool:
+        return bool(self.heading) and all(
+            value is None for value in (self.page, self.paragraph, self.table, self.row)
+        )
+
     @property
     def label(self) -> str:
+        if self.kind == "layout":
+            return self.heading
         if self.kind == "pdf":
             return f"Страница {self.page}"
         prefix = f"Раздел «{self.heading}», " if self.heading else ""
@@ -86,14 +107,6 @@ class TableRow:
         if not self.cells or len(self.headers) != len(self.cells):
             raise ValueError("Заголовки таблицы должны соответствовать ячейкам строки")
 
-    def clipped(self, start: int, end: int) -> TableRow:
-        cursor, cells = 0, []
-        for cell in self.cells:
-            left, right = max(0, start - cursor), min(len(cell), end - cursor)
-            cells.append(cell[left:right] if right > left else "")
-            cursor += len(cell) + 3  # В исходной строке между ячейками стоит ' | '.
-        return TableRow(self.headers, tuple(cells), self.caption)
-
 
 @dataclass(frozen=True)
 class Block:
@@ -110,10 +123,19 @@ class Block:
 
 
 @dataclass(frozen=True)
+class DocxLayout:
+    page_sizes: tuple[tuple[float, float] | None, ...]
+    headings: tuple[Block, ...]
+    table_numbers: tuple[str | None, ...]
+    figure_numbers: tuple[str | None, ...]
+
+
+@dataclass(frozen=True)
 class DocumentText:
     path: Path
     blocks: tuple[Block, ...]
     warnings: tuple[str, ...] = ()
+    layout: DocxLayout | None = None
 
 
 @dataclass(frozen=True)
@@ -171,3 +193,5 @@ class CheckReport:
     seconds: float
     cancelled: bool = False
     timings: tuple[tuple[str, float], ...] = ()
+    checklist_path: Path | None = None
+    context_mode: str = ""

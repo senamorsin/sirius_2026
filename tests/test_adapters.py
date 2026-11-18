@@ -53,21 +53,6 @@ def test_e5_masked_pooling_and_query_prefix(encoder):
     assert not np.allclose(query, result[:1])
 
 
-def test_chunk_offsets_overlap_and_source_survive(encoder):
-    text = "word " * 900
-    location = Location("pdf", page=7)
-    chunks = encoder.split([Block("p7", text, location)])
-    assert len(chunks) == 3
-    assert all(chunk.location == location for chunk in chunks)
-    assert chunks[0].id == "p7:c1"
-    assert all(chunk.text in text for chunk in chunks)
-    assert len(chunks[0].text.split()) == 400
-    assert len(chunks[-1].text.split()) == 200
-    assert encoder.split([Block("small", "word", location)])[0].id == "small"
-    with pytest.raises(InterruptedError):
-        encoder.split([Block("p7", text, location)], lambda: True)
-
-
 def test_missing_embedding_weights_are_actionable(tmp_path):
     with pytest.raises(ValueError, match="sirius-proj install"):
         embeddings.E5Encoder(tmp_path)

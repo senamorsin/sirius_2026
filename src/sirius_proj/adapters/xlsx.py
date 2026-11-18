@@ -1,15 +1,14 @@
 """Сохранение результатов и всех цитат в Excel. Готовый файл заменяет старый после записи."""
 
-import os
 import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from sirius_proj.adapters.report_files import save_atomic
 from sirius_proj.domain.models import CheckFailure, CheckReport, CheckResult
 
 
@@ -54,7 +53,7 @@ def export_xlsx(
     )
     for sheet in book:
         _format_sheet(sheet)
-    _save_atomic(book, path)
+    save_atomic(path, book.save)
 
 
 def _append_result(summary, evidence_sheet, result: CheckResult) -> None:
@@ -97,15 +96,3 @@ def _format_sheet(sheet) -> None:
         sheet.column_dimensions[letter].width = 18 if letter == "A" else 55
         for cell in column:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
-
-
-def _save_atomic(book: Workbook, path: Path) -> None:
-    temporary = None
-    try:
-        with NamedTemporaryFile(dir=path.parent, suffix=".xlsx", delete=False) as stream:
-            temporary = Path(stream.name)
-        book.save(temporary)
-        os.replace(temporary, path)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)

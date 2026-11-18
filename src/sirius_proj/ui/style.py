@@ -3,6 +3,7 @@
 from sirius_proj.domain.models import Status
 
 COLORS = {
+    Status.PARTIAL: "#7a580a",
     Status.COMPLIANT: "#15785d",
     Status.NON_COMPLIANT: "#b23a3a",
     Status.INSUFFICIENT: "#946518",

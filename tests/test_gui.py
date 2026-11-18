@@ -75,7 +75,7 @@ def test_results_sources_filtering_and_export(window, monkeypatch, tmp_path):
     assert window.table.rowCount() == 4
     assert "Страница 1" in window.details.toPlainText()
     assert "220 В" in window.details.toPlainText()
-    window.filter.setCurrentIndex(2)
+    window.filter.setCurrentIndex(window.filter.findData(Status.NON_COMPLIANT.value))
     assert window.table.isRowHidden(0)
     assert not window.table.isRowHidden(1)
     window.table.selectRow(2)

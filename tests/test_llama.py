@@ -217,3 +217,33 @@ def test_generation_can_only_reference_sources_present_in_the_request():
         ],
     )
     llm.client.close()
+
+
+def test_method_goes_to_model_and_fragment_id_recovers_original_quote():
+    import json
+
+    def handler(request):
+        payload = json.loads(request.content)
+        data = json.loads(payload["messages"][-1]["content"])
+        assert data["method"] == "Достаточно описания процедуры."
+        fields = payload["response_format"]["schema"]["properties"]["evidence"]["items"]
+        assert fields["properties"]["quote"]["enum"] == [""]
+        answer = {
+            "status": "compliant",
+            "explanation": "Процедура описана.",
+            "evidence": [{"chunk_id": "p4", "quote": ""}],
+        }
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(answer)}}]
+            },
+        )
+
+    judge = runtime(handler)
+    text = "Результат измеряют трижды  и записывают в протокол."
+    answer = judge.assess(
+        Requirement("1", "Описать измерение", "Достаточно описания процедуры."),
+        [Block("p4", text, Location("docx", paragraph=4))],
+    )
+    assert answer.evidence[0].quote == text

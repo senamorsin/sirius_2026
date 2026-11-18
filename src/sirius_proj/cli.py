@@ -23,6 +23,9 @@ def main() -> int:
     check.add_argument("-o", "--output", required=True, type=Path)
     check.add_argument("--json", type=Path, help="Дополнительно сохранить машинный отчёт")
     check.add_argument("--cpu", action="store_true")
+    check.add_argument(
+        "--rag", action="store_true", help="Использовать поиск даже для короткого отчёта"
+    )
     args = parser.parse_args()
     settings = default_settings(args.data_dir)
     if args.command == "install":
@@ -57,7 +60,7 @@ def main() -> int:
     from sirius_proj.bootstrap import create_service, write_report
 
     try:
-        report = create_service(replace(settings, use_gpu=not args.cpu)).run(
+        report = create_service(replace(settings, use_gpu=not args.cpu, force_rag=args.rag)).run(
             args.document,
             args.checklist,
             on_progress=lambda done, total, text: print(text, flush=True),
@@ -82,6 +85,7 @@ def report_to_dict(report) -> dict:
         "seconds": report.seconds,
         "warnings": list(report.document.warnings),
         "cancelled": report.cancelled,
+        "context_mode": report.context_mode,
         "timings": dict(report.timings),
         "results": [asdict(result) for result in report.results],
     }

@@ -14,9 +14,10 @@ class Settings:
     use_gpu: bool = True
     request_timeout: float = 120.0
     startup_timeout: float = 180.0
-    context_size: int = 8192
+    context_size: int = 16384
     output_tokens: int = 1024
     data_dir: Path | None = None
+    force_rag: bool = False
 
     @property
     def missing_components(self) -> tuple[Path, ...]:

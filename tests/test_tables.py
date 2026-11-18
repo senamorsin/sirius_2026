@@ -54,29 +54,3 @@ def test_selected_rows_are_grouped_by_table_and_keep_source_ids():
         "t1r7:cell1",
     ]
     assert json.loads(json.dumps(payload, ensure_ascii=False)) == payload
-
-
-def test_long_row_sends_only_cells_present_in_selected_fragment():
-    from tokenizers import Tokenizer
-    from tokenizers.models import WordLevel
-    from tokenizers.pre_tokenizers import WhitespaceSplit
-
-    from sirius_proj.adapters.embeddings import E5Encoder
-
-    tokenizer = Tokenizer(WordLevel({"[UNK]": 0}, unk_token="[UNK]"))
-    tokenizer.pre_tokenizer = WhitespaceSplit()
-    encoder = E5Encoder.__new__(E5Encoder)
-    encoder.raw_tokenizer = tokenizer
-    value = "измерение " * 500 + "ЗНАЧЕНИЕ_В_КОНЦЕ"
-    row = Block(
-        "row",
-        "Протокол | " + value,
-        Location("docx", table=1, row=2),
-        TableRow(("Документ", "Содержание"), ("Протокол", value)),
-    )
-    first = encoder.split([row])[0]
-    sent = json.dumps(document_context([first]), ensure_ascii=False)
-    assert "ЗНАЧЕНИЕ_В_КОНЦЕ" not in sent
-    assert first.table.cells[1] in first.text
-    assert first.location == row.location
-    assert first.table.headers == row.table.headers

@@ -152,7 +152,7 @@ def test_settings_validate_paths_and_limits(tmp_path):
     for invalid in [
         replace(settings, request_timeout=0),
         replace(settings, context_size=10),
-        replace(settings, output_tokens=9000),
+        replace(settings, output_tokens=settings.context_size),
     ]:
         with pytest.raises(ValueError):
             invalid.validate()

@@ -6,12 +6,17 @@ from pathlib import Path
 
 from docx import Document
 from docx.table import Table
+from docx.text.paragraph import Paragraph
 from pypdf import PdfReader
 
+from sirius_proj.adapters.checklist import WordChecklist
+from sirius_proj.adapters.word_layout import read_layout, table_caption
 from sirius_proj.domain.models import Block, DocumentText, Location, Requirement, TableRow
 
 
 def load_checklist(path: Path) -> tuple[Requirement, ...]:
+    if path.suffix.lower() == ".docx":
+        return WordChecklist.read(path).requirements
     with path.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames is None or not {"id", "requirement"} <= set(reader.fieldnames):
@@ -61,14 +66,16 @@ def read_document(path: Path) -> DocumentText:
 def _read_docx(path: Path) -> DocumentText:
     document = Document(path)
     blocks = []
+    heading_blocks = []
     headings = {}
     paragraph_number = table_number = 0
     preceding = ""
-    for item in document.iter_inner_content():
+    items = tuple(document.iter_inner_content())
+    for item in items:
         heading = " / ".join(headings.values())
         if isinstance(item, Table):
             table_number += 1
-            caption = preceding if re.match(r"^Таблица\s*(?:№\s*)?\d+", preceding) else ""
+            caption = preceding if table_caption(preceding) else ""
             blocks.extend(_table_blocks(item, table_number, heading, caption))
             preceding = ""
         else:
@@ -76,22 +83,35 @@ def _read_docx(path: Path) -> DocumentText:
             text = item.text.strip()
             if not text:
                 continue
-            headings = _update_headings(headings, item.style.style_id if item.style else "", text)
+            updated = _update_headings(headings, _heading_level(item), text)
+            is_heading = updated is not headings
+            headings = updated
             heading = " / ".join(headings.values())
             location = Location("docx", heading=heading, paragraph=paragraph_number)
-            blocks.append(Block(f"p{paragraph_number}", text, location))
+            block = Block(f"p{paragraph_number}", text, location)
+            blocks.append(block)
+            if is_heading:
+                heading_blocks.append(block)
             preceding = text
-    return DocumentText(path, tuple(blocks))
+    return DocumentText(path, tuple(blocks), layout=read_layout(document, items, heading_blocks))
 
 
-def _update_headings(headings: dict[int, str], style: str, text: str) -> dict[int, str]:
-    match = re.fullmatch(r"Heading(\d+)", style)
-    if style == "Title":
-        return {0: text}
-    if match:
-        level = int(match[1])
-        return {**{key: value for key, value in headings.items() if key < level}, level: text}
-    return headings
+def _heading_level(paragraph: Paragraph) -> int | None:
+    direct = paragraph._p.xpath("./w:pPr/w:outlineLvl")
+    style = paragraph.style
+    outline = direct or (style._element.xpath("./w:pPr/w:outlineLvl") if style else [])
+    if outline:
+        return outline[0].val + 1 if 0 <= outline[0].val < 9 else None
+    if style and style.name == "Title":
+        return 0
+    match = re.fullmatch(r"Heading\s*(\d+)", style.name if style else "")
+    return int(match[1]) if match else None
+
+
+def _update_headings(headings: dict[int, str], level: int | None, text: str) -> dict[int, str]:
+    if level is None:
+        return headings
+    return {**{key: value for key, value in headings.items() if key < level}, level: text}
 
 
 def _column_headers(table: Table) -> tuple[str, ...] | None:
@@ -124,6 +144,13 @@ def _column_headers(table: Table) -> tuple[str, ...] | None:
         "номер протокола",
         "основание",
         "единица измерения",
+        "вариант",
+        "предлагаемый состав",
+        "преимущества и ограничения",
+        "поток",
+        "периодичность",
+        "функция",
+        "предлагаемая реакция",
     }
     return cells if sum(cell.casefold() in names for cell in cells) >= 2 else None
 
