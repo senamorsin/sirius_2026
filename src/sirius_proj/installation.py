@@ -183,18 +183,22 @@ def extract_runtime(archive: Path, destination: Path, name: str):
     archive.unlink()
 
 
-def prepare_desktop(root: Path, progress: Callable[[str], None] = print) -> None:
-    if sys.platform != "linux":
-        return
+def load_xcb_cursor(root: Path) -> bool:
     for library in [
         "libxcb-cursor.so.0",
         *map(str, (root / "runtime/qt").glob("usr/lib/**/libxcb-cursor.so.0")),
     ]:
         try:
             ctypes.CDLL(library, mode=ctypes.RTLD_GLOBAL)
-            return
+            return True
         except OSError:
             continue
+    return False
+
+
+def prepare_desktop(root: Path, progress: Callable[[str], None] = print) -> None:
+    if sys.platform != "linux" or load_xcb_cursor(root):
+        return
     if not all(shutil.which(tool) for tool in ("apt-get", "dpkg-deb")):
         raise RuntimeError(
             "Установите системную libxcb-cursor0; локальная подготовка поддерживает Debian/Ubuntu"

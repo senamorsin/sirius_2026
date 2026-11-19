@@ -9,21 +9,9 @@ from typing import Protocol
 import numpy as np
 from numpy.typing import NDArray
 
-from sirius_proj.domain.models import Block
-
 
 class Encoder(Protocol):
     def encode(self, texts: Sequence[str], *, query: bool = False) -> NDArray[np.float32]: ...
-
-
-def contextual_text(block: Block) -> str:
-    if block.table is None:
-        return block.text
-    values = "; ".join(
-        f"{header}: {cell}"
-        for header, cell in zip(block.table.headers, block.table.cells, strict=True)
-    )
-    return f"{block.location.heading}\n{block.table.caption}\n{values}"
 
 
 IDENTIFIER = re.compile(
@@ -75,45 +63,36 @@ def lexical_statistics(word_counts: tuple[Counter, ...]) -> tuple[dict[str, floa
 
 
 class HybridIndex:
-    def __init__(self, chunks: tuple[Block, ...], encoder: Encoder, limit: int = 8) -> None:
-        if not chunks or limit < 1:
-            raise ValueError("Индекс требует фрагментов и положительного лимита")
-        self.chunks = chunks
+    def __init__(self, texts: tuple[str, ...], encoder: Encoder) -> None:
+        self.texts = texts
         self.encoder = encoder
-        self.limit = limit
-        texts = tuple(contextual_text(chunk) for chunk in chunks)
         self.vectors = encoder.encode(texts)
         self.terms = tuple(identifiers(text) for text in texts)
         frequencies = Counter(term for terms in self.terms for term in terms)
         # Редкое обозначение помогает найти нужный фрагмент. Частое имя объекта
         # не должно вытеснять полезный абзац, в котором это имя не повторили.
+        size = len(texts)
         self.identifier_weights = {
-            term: 3 * (log1p((len(chunks) - count + 0.5) / (count + 0.5)) / log1p(len(chunks))) ** 3
+            term: 3 * (log1p((size - count + 0.5) / (count + 0.5)) / log1p(size)) ** 3
             for term, count in frequencies.items()
         }
         self.word_counts = tuple(words(text) for text in texts)
         self.idf, self.average_length = lexical_statistics(self.word_counts)
 
-    def retrieve(self, requirement: str) -> tuple[Block, ...]:
+    def rank(self, requirement: str) -> list[int]:
         vector = self.encoder.encode([requirement], query=True)[0]
         similarities = self.vectors @ vector
         terms = identifiers(requirement)
         query = words(requirement)
         scores = [
-            (
-                self._score(i, float(similarities[i]), query)
-                + sum(self.identifier_weights[term] for term in terms & self.terms[i]),
-                -i,
-            )
-            for i in range(len(self.chunks))
+            self._score(i, float(similarity), query)
+            + sum(self.identifier_weights[term] for term in terms & self.terms[i])
+            for i, similarity in enumerate(similarities)
         ]
-        ranked = sorted(range(len(scores)), key=scores.__getitem__, reverse=True)
-        return tuple(self.chunks[i] for i in ranked[: self.limit])
+        return sorted(range(len(scores)), key=scores.__getitem__, reverse=True)
 
     def _score(self, index: int, semantic: float, query: Counter) -> float:
         lexical = lexical_score(query, self.word_counts[index], self.idf, self.average_length)
         return (
-            semantic
-            + 0.35 * lexical / (1 + lexical)
-            - contents_penalty(self.chunks[index].text, query)
+            semantic + 0.35 * lexical / (1 + lexical) - contents_penalty(self.texts[index], query)
         )

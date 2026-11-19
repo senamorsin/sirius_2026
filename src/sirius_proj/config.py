@@ -36,21 +36,17 @@ class Settings:
         return tuple(path for path in paths if not path.is_file())
 
     def validate(self) -> None:
-        if not self.server_binary.is_file():
+        if missing := self.missing_components:
+            if missing[0] == self.server_binary:
+                component = "llama-server"
+            elif missing[0] == self.model_file:
+                component = "GGUF-модель"
+            else:
+                component = missing[0].name
             raise ValueError(
-                "Не найден llama-server. Подготовьте компоненты в окне приложения "
+                f"Не найден компонент: {component}. Подготовьте компоненты в окне приложения "
                 "или выполните sirius-proj install."
             )
-        if not self.model_file.is_file():
-            raise ValueError(
-                "Не найдена GGUF-модель. Подготовьте компоненты в окне приложения "
-                "или выполните sirius-proj install."
-            )
-        for name in ("model.onnx", "tokenizer.json"):
-            if not (self.embedding_dir / name).is_file():
-                raise ValueError(f"Не найден {name} в каталоге E5")
-        if self.missing_components:
-            raise ValueError(f"Не подготовлен компонент: {self.missing_components[0].name}")
         if min(self.request_timeout, self.startup_timeout) <= 0:
             raise ValueError("Тайм-аут должен быть положительным")
         if self.context_size < 2048 or not 1 <= self.output_tokens < self.context_size:

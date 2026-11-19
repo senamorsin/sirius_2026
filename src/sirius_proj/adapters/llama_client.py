@@ -70,24 +70,15 @@ insufficient можно сослаться на абзац о недостающ
 Сохрани точные названия и числа. Адреса источников выведет приложение."""
 
 
-def table_cells(block: Block) -> list[dict[str, str]]:
-    if block.table is None:
-        return []
-    return [
-        {"cell_id": f"{block.id}:cell{number}", "column": header, "text": cell}
-        for number, (header, cell) in enumerate(
-            zip(block.table.headers, block.table.cells, strict=True), 1
-        )
-    ]
-
-
-def document_context(chunks: Sequence[Block]) -> dict:
+def document_context(chunks: Sequence[Block]) -> tuple[dict, dict[str, Citation]]:
     fragments, tables = [], {}
+    paragraph_sources, cell_sources = {}, {}
     for block in chunks:
         if block.table is None:
             fragments.append(
                 {"chunk_id": block.id, "section": block.location.heading, "text": block.text}
             )
+            paragraph_sources[block.id] = Citation(block.id, block.text)
             continue
         key = (block.location.table, block.table.headers)
         table = tables.setdefault(
@@ -99,16 +90,24 @@ def document_context(chunks: Sequence[Block]) -> dict:
                 "rows": [],
             },
         )
-        table["rows"].append({"row": block.location.row, "cells": table_cells(block)})
-    for table in tables.values():
-        table["rows"].sort(key=lambda row: (row["row"], row["cells"][0]["cell_id"]))
-    return {"fragments": fragments, "tables": list(tables.values())}
+        cells = []
+        row = block.table
+        for number, (header, text) in enumerate(zip(row.headers, row.cells, strict=True), 1):
+            cell_id = f"{block.id}:cell{number}"
+            cells.append({"cell_id": cell_id, "column": header, "text": text})
+            if text.strip():
+                cell_sources[cell_id] = Citation(block.id, text)
+        table["rows"].append({"row": block.location.row, "cells": cells})
+    # Чтение DOCX и поиск передают строки каждой таблицы в исходном порядке.
+    return {
+        "fragments": fragments,
+        "tables": list(tables.values()),
+    }, paragraph_sources | cell_sources
 
 
 def parse_answer(
     raw: str,
-    cells: Mapping[str, Citation] | None = None,
-    fragments: Mapping[str, Citation] | None = None,
+    sources: Mapping[str, Citation] | None = None,
 ) -> ModelAnswer:
     try:
         value = json.loads(raw)
@@ -118,15 +117,14 @@ def parse_answer(
             raise ValueError("Нет пояснения")
         if not isinstance(value["evidence"], list):
             raise ValueError("evidence должен быть массивом")
-        cells = cells or {}
-        fragments = fragments or {}
+        sources = sources or {}
         citations = []
         for item in value["evidence"]:
             key, quote = item["chunk_id"], item["quote"]
-            if key in cells:
-                citation = cells[key]
-            elif quote == "" and key in fragments:
-                citation = fragments[key]
+            source = sources.get(key)
+            # Для ячейки ID ссылки отличается от ID строки, к которой она относится.
+            if source is not None and (source.chunk_id != key or quote == ""):
+                citation = source
             else:
                 citation = Citation(key, quote)
             citations.append(citation)
@@ -144,24 +142,15 @@ class LlamaJudge:
 
     def assess(self, requirement: Requirement, chunks: Sequence[Block]) -> ModelAnswer:
         """Передаёт требование и найденный текст модели, затем разбирает её ответ."""
-        data = {**document_context(chunks), "requirement": requirement.text}
+        data, sources = document_context(chunks)
+        data["requirement"] = requirement.text
         if requirement.comment:
             data["method"] = requirement.comment
-        cells = {
-            cell["cell_id"]: Citation(block.id, cell["text"])
-            for block in chunks
-            for cell in table_cells(block)
-            if cell["text"].strip()
-        }
-        fragments = {
-            block.id: Citation(block.id, block.text) for block in chunks if block.table is None
-        }
-        source_ids = [*fragments, *cells]
         schema = deepcopy(ANSWER_SCHEMA)
         evidence_schema = schema["properties"]["evidence"]
-        if source_ids:
+        if sources:
             fields = evidence_schema["items"]["properties"]
-            fields["chunk_id"]["enum"] = source_ids
+            fields["chunk_id"]["enum"] = list(sources)
             fields["quote"]["enum"] = [""]
         else:
             evidence_schema["maxItems"] = 0
@@ -179,7 +168,7 @@ class LlamaJudge:
             "response_format": {"type": "json_object", "schema": schema},
         }
         try:
-            answer = parse_answer(self._complete(payload), cells, fragments)
+            answer = parse_answer(self._complete(payload), sources)
         except ValueError as error:
             raise CheckError(str(error)) from error
         return self._ensure_russian(answer)

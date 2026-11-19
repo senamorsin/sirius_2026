@@ -1,9 +1,10 @@
 """Проверка системных библиотек перед открытием окна Qt."""
 
-import ctypes
 import os
 import sys
 from pathlib import Path
+
+from sirius_proj.installation import load_xcb_cursor
 
 
 class MissingDesktopLibrary(RuntimeError):
@@ -20,16 +21,8 @@ def prepare_qt(root: Path) -> None:
         raise RuntimeError(
             "Нет графической сессии DISPLAY. Для проверки без окна используйте check."
         )
-    candidates = ["libxcb-cursor.so.0"]
-    candidates.extend(
-        str(path) for path in (root / "runtime/qt").glob("usr/lib/**/libxcb-cursor.so.0")
-    )
-    for library in candidates:
-        try:
-            ctypes.CDLL(library, mode=ctypes.RTLD_GLOBAL)
-            return
-        except OSError:
-            continue
+    if load_xcb_cursor(root):
+        return
     raise MissingDesktopLibrary(
         "Qt не может загрузить libxcb-cursor.so.0. "
         "Выполните uv run sirius-proj install "

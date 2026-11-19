@@ -13,8 +13,8 @@ def test_missing_xcb_dependency_has_actionable_message(tmp_path, monkeypatch):
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setenv("QT_QPA_PLATFORM", "xcb")
     monkeypatch.setattr(
-        "sirius_proj.ui.startup.ctypes.CDLL",
-        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("Не найдена системная библиотека")),
+        "sirius_proj.ui.startup.load_xcb_cursor",
+        lambda root: False,
     )
     with pytest.raises(RuntimeError, match="sirius-proj install"):
         prepare_qt(tmp_path)
@@ -22,9 +22,7 @@ def test_missing_xcb_dependency_has_actionable_message(tmp_path, monkeypatch):
 
 def test_offscreen_tests_do_not_need_xcb(tmp_path, monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    monkeypatch.setattr(
-        "sirius_proj.ui.startup.ctypes.CDLL", lambda *args, **kwargs: pytest.fail("xcb")
-    )
+    monkeypatch.setattr("sirius_proj.ui.startup.load_xcb_cursor", lambda root: pytest.fail("xcb"))
     prepare_qt(tmp_path)
 
 

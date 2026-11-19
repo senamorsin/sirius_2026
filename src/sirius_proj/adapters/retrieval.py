@@ -5,7 +5,7 @@ from dataclasses import replace
 from itertools import groupby
 
 from sirius_proj.adapters.embeddings import E5Encoder
-from sirius_proj.adapters.search import HybridIndex, contextual_text
+from sirius_proj.adapters.search import HybridIndex
 from sirius_proj.domain.models import Block
 
 CHUNK_SIZE = 1400
@@ -70,27 +70,25 @@ def _search_text(group: tuple[Block, ...]) -> str:
                 *(row.text for row in group),
             )
         )
-    return "\n".join((first.location.heading, *(contextual_text(block) for block in group)))
+    return "\n".join((first.location.heading, *(block.text for block in group)))
 
 
 class SectionIndex:
     def __init__(
         self, blocks: tuple[Block, ...], encoder: E5Encoder, cancelled: Callable[[], bool]
     ) -> None:
-        entries, self.groups = [], {}
-        for number, group in enumerate(search_groups(blocks), 1):
+        self.groups = []
+        for group in search_groups(blocks):
             if cancelled():
                 raise InterruptedError("Проверка отменена")
-            key = f"g{number}"
-            self.groups[key] = group
-            entries.append(Block(key, _search_text(group), group[0].location))
-        self.index = HybridIndex(tuple(entries), encoder, limit=4)
+            self.groups.append(group)
+        self.index = HybridIndex(tuple(map(_search_text, self.groups)), encoder)
 
     def retrieve(self, requirement: str) -> tuple[Block, ...]:
         return tuple(
             dict.fromkeys(
                 block
-                for entry in self.index.retrieve(requirement)
-                for block in self.groups[entry.id]
+                for position in self.index.rank(requirement)[:4]
+                for block in self.groups[position]
             )
         )

@@ -165,9 +165,9 @@ def test_first_launch_prepares_missing_components_in_worker(window, app):
     window._initial_setup()
     assert not window.run_button.isEnabled()
     deadline = monotonic() + 5
-    while window.setup_worker is not None and monotonic() < deadline:
+    while window.worker is not None and monotonic() < deadline:
         app.processEvents()
-    assert window.setup_worker is None
+    assert window.worker is None
     assert used_threads and used_threads[0] != main_thread
     assert window.run_button.isEnabled()
     assert Path(window.model_edit.text()).is_file()

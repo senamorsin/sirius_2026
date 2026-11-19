@@ -27,7 +27,7 @@ def test_docx_column_names_and_caption_stay_attached_to_values(tmp_path):
     assert block.table.cells == ("Руководство по эксплуатации", "2", "Передано")
     assert "Переданная документация" in block.table.caption
     assert block.location.row == 2
-    context = document_context([block])
+    context, _ = document_context([block])
     assert context["tables"][0]["columns"] == ["Документ", "Редакция", "Состояние"]
     assert context["tables"][0]["rows"][0]["cells"][0]["cell_id"] == "t1r2:cell1"
     assert context["tables"][0]["rows"][0]["cells"][1] == {
@@ -47,7 +47,7 @@ def test_selected_rows_are_grouped_by_table_and_keep_source_ids():
         )
         for i in (2, 7)
     )
-    payload = document_context(rows)
+    payload, _ = document_context(rows)
     assert len(payload["tables"]) == 1
     assert [row["cells"][0]["cell_id"] for row in payload["tables"][0]["rows"]] == [
         "t1r2:cell1",

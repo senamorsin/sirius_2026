@@ -1,6 +1,7 @@
 """Сборка приложения: подключаем чтение файлов, поиск, модель, окно и экспорт."""
 
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from sirius_proj.application.ports import SearchIndex
@@ -11,7 +12,7 @@ from sirius_proj.domain.models import Block, CheckReport
 
 def create_service(settings: Settings) -> ReviewService:
     from sirius_proj.adapters.documents import load_checklist, read_document
-    from sirius_proj.adapters.llama_process import LlamaServer
+    from sirius_proj.adapters.llama_process import open_llama
 
     def build_index(blocks: tuple[Block, ...], cancelled: Callable[[], bool]) -> SearchIndex:
         from sirius_proj.adapters.embeddings import E5Encoder
@@ -23,7 +24,7 @@ def create_service(settings: Settings) -> ReviewService:
         read_document,
         load_checklist,
         build_index,
-        lambda cancelled: LlamaServer(settings, cancelled),
+        partial(open_llama, settings),
         force_rag=settings.force_rag,
     )
 

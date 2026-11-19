@@ -10,7 +10,7 @@ from sirius_proj.adapters.documents import load_checklist, read_document
 from sirius_proj.adapters.llama_client import parse_answer
 from sirius_proj.adapters.xlsx import export_xlsx
 from sirius_proj.config import Settings
-from sirius_proj.domain.models import Block, CheckFailure, Location, Requirement
+from sirius_proj.domain.models import CheckFailure, Location, Requirement
 
 
 @pytest.mark.parametrize(
@@ -161,5 +161,3 @@ def test_settings_validate_paths_and_limits(tmp_path):
 def test_empty_domain_text_is_rejected():
     with pytest.raises(ValueError):
         Requirement("", "text")
-    with pytest.raises(ValueError):
-        Block("x", " ", Location("pdf", page=1))

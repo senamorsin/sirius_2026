@@ -1,6 +1,8 @@
 """Проверки поиска фрагментов, обработки требований и отмены."""
 
 import threading
+from contextlib import nullcontext
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -8,8 +10,9 @@ import pytest
 
 from sirius_proj.adapters.llama_client import parse_answer
 from sirius_proj.adapters.search import HybridIndex
-from sirius_proj.application.checks import check_requirements
+from sirius_proj.application.checks import check_requirement, check_requirements
 from sirius_proj.application.errors import CheckError
+from sirius_proj.application.review import ReviewService
 from sirius_proj.domain.models import (
     Block,
     CheckFailure,
@@ -41,10 +44,8 @@ def blocks():
 
 
 def test_exact_identifier_is_not_lost_to_semantic_ranking():
-    index = HybridIndex(blocks(), Encoder(), limit=2)
-    found = index.retrieve("Применён контроллер КТ-1234")
-    assert found[0].id == "b1"
-    assert len(found) == 2
+    index = HybridIndex(tuple(block.text for block in blocks()), Encoder())
+    assert index.rank("Применён контроллер КТ-1234")[0] == 1
 
 
 def test_index_encodes_document_only_once():
@@ -56,9 +57,9 @@ def test_index_encodes_document_only_once():
             return super().encode(texts, query=query)
 
     encoder = CountingEncoder()
-    index = HybridIndex(blocks(), encoder)
-    index.retrieve("Первое")
-    index.retrieve("Второе")
+    index = HybridIndex(tuple(block.text for block in blocks()), encoder)
+    index.rank("Первое")
+    index.rank("Второе")
     assert encoder.calls == [False, True, True]
 
 
@@ -79,8 +80,8 @@ def test_contents_entry_does_not_displace_actual_parameter():
             ]
         )
     )
-    index = HybridIndex(candidates, NearEncoder(), limit=1)
-    assert index.retrieve("Сопротивление изоляции должно составлять 70 МОм.")[0].id == "b1"
+    index = HybridIndex(tuple(block.text for block in candidates), NearEncoder())
+    assert index.rank("Сопротивление изоляции должно составлять 70 МОм.")[0] == 1
 
 
 class Index:
@@ -96,18 +97,19 @@ class Judge:
         )
 
 
+def item_check(index, judge):
+    return partial(
+        check_requirement, DocumentText(Path("report.pdf"), blocks()), index.retrieve, judge
+    )
+
+
 def test_programming_error_is_not_presented_as_a_document_result():
     class BuggyIndex:
         def retrieve(self, text):
             raise RuntimeError("Внутренняя ошибка поиска")
 
     with pytest.raises(RuntimeError, match="Внутренняя ошибка поиска"):
-        check_requirements(
-            DocumentText(Path("report.pdf"), blocks()),
-            (Requirement("1", "Питание"),),
-            BuggyIndex(),
-            Judge(),
-        )
+        check_requirements((Requirement("1", "Питание"),), item_check(BuggyIndex(), Judge()))
 
 
 def test_service_reports_each_requirement_and_separates_failures():
@@ -119,27 +121,27 @@ def test_service_reports_each_requirement_and_separates_failures():
 
     requirements = (Requirement("1", "Питание"), Requirement("2", "Мощность"))
     seen = []
-    report = check_requirements(
-        DocumentText(Path("report.pdf"), blocks()),
-        requirements,
-        Index(),
-        BrokenJudge(),
-        on_result=seen.append,
+    results = check_requirements(
+        requirements, item_check(Index(), BrokenJudge()), on_result=seen.append
     )
-    assert len(report.results) == 2
-    assert report.results[0].status is Status.COMPLIANT
-    assert isinstance(report.results[1], CheckFailure)
-    assert "не ответила" in report.results[1].message
-    assert seen == list(report.results)
+    assert len(results) == 2
+    assert results[0].status is Status.COMPLIANT
+    assert isinstance(results[1], CheckFailure)
+    assert "не ответила" in results[1].message
+    assert seen == list(results)
 
 
 def test_service_cancels_between_requirements():
     event = threading.Event()
-    report = check_requirements(
-        DocumentText(Path("report.pdf"), blocks()),
-        (Requirement("1", "Питание"), Requirement("2", "Другое")),
-        Index(),
-        Judge(),
+    service = ReviewService(
+        lambda path: DocumentText(path, Index().retrieve("")),
+        lambda _: (Requirement("1", "Питание"), Requirement("2", "Другое")),
+        lambda *args: Index(),
+        lambda _: nullcontext(Judge()),
+    )
+    report = service.run(
+        Path("report.pdf"),
+        Path("checklist.csv"),
         on_result=lambda _: event.set(),
         cancelled=event.is_set,
     )
@@ -152,13 +154,8 @@ def test_model_cannot_cite_unretrieved_document_block():
         def retrieve(self, requirement):
             return (Block("b2", "Нет данных", Location("pdf", page=2)),)
 
-    report = check_requirements(
-        DocumentText(Path("report.pdf"), blocks()),
-        (Requirement("1", "Питание"),),
-        OtherIndex(),
-        Judge(),
-    )
-    assert report.results[0].status is Status.INSUFFICIENT
+    result = item_check(OtherIndex(), Judge())(Requirement("1", "Питание"))
+    assert result.status is Status.INSUFFICIENT
 
 
 def test_frequent_equipment_identifier_does_not_hide_parameter_without_repeated_name():
@@ -172,7 +169,5 @@ def test_frequent_equipment_identifier_does_not_hide_parameter_without_repeated_
         Block(f"other{i}", "ТК-101: общие сведения о поставке.", Location("docx", paragraph=i + 1))
         for i in range(10)
     ) + (Block("inputs", "Подключено 16 дискретных входов.", Location("docx", paragraph=11)),)
-    found = HybridIndex(chunks, SimilarEncoder(), limit=3).retrieve(
-        "В ТК-101 должны быть подключены 16 дискретных входов."
-    )
-    assert found[0].id == "inputs"
+    index = HybridIndex(tuple(block.text for block in chunks), SimilarEncoder())
+    assert index.rank("В ТК-101 должны быть подключены 16 дискретных входов.")[0] == 10

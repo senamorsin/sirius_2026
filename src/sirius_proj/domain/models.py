@@ -103,10 +103,6 @@ class TableRow:
     cells: tuple[str, ...]
     caption: str = ""
 
-    def __post_init__(self):
-        if not self.cells or len(self.headers) != len(self.cells):
-            raise ValueError("Заголовки таблицы должны соответствовать ячейкам строки")
-
 
 @dataclass(frozen=True)
 class Block:
@@ -114,12 +110,6 @@ class Block:
     text: str
     location: Location
     table: TableRow | None = None
-
-    def __post_init__(self) -> None:
-        require_text(self.id, "Фрагмент")
-        require_text(self.text, "Текст фрагмента")
-        if self.table is not None and self.location.table is None:
-            raise ValueError("Ячейки таблицы требуют адреса таблицы и строки")
 
 
 @dataclass(frozen=True)
@@ -170,9 +160,6 @@ class Finding:
     evidence: tuple[Evidence, ...]
 
     def __post_init__(self) -> None:
-        require_text(self.explanation, "Пояснение")
-        if not isinstance(self.status, Status):
-            raise ValueError("Неизвестный статус")
         if self.status is not Status.INSUFFICIENT and not self.evidence:
             raise ValueError("Определённый вывод требует проверенных доказательств")
 

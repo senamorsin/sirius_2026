@@ -72,27 +72,28 @@ def _read_docx(path: Path) -> DocumentText:
     preceding = ""
     items = tuple(document.iter_inner_content())
     for item in items:
-        heading = " / ".join(headings.values())
         if isinstance(item, Table):
             table_number += 1
             caption = preceding if table_caption(preceding) else ""
+            heading = " / ".join(headings.values())
             blocks.extend(_table_blocks(item, table_number, heading, caption))
             preceding = ""
-        else:
-            paragraph_number += 1
-            text = item.text.strip()
-            if not text:
-                continue
-            updated = _update_headings(headings, _heading_level(item), text)
-            is_heading = updated is not headings
-            headings = updated
-            heading = " / ".join(headings.values())
-            location = Location("docx", heading=heading, paragraph=paragraph_number)
-            block = Block(f"p{paragraph_number}", text, location)
-            blocks.append(block)
-            if is_heading:
-                heading_blocks.append(block)
-            preceding = text
+            continue
+        paragraph_number += 1
+        text = item.text.strip()
+        if not text:
+            continue
+        level = _heading_level(item)
+        if level is not None:
+            headings = {key: value for key, value in headings.items() if key < level}
+            headings[level] = text
+        heading = " / ".join(headings.values())
+        location = Location("docx", heading=heading, paragraph=paragraph_number)
+        block = Block(f"p{paragraph_number}", text, location)
+        blocks.append(block)
+        if level is not None:
+            heading_blocks.append(block)
+        preceding = text
     return DocumentText(path, tuple(blocks), layout=read_layout(document, items, heading_blocks))
 
 
@@ -108,23 +109,12 @@ def _heading_level(paragraph: Paragraph) -> int | None:
     return int(match[1]) if match else None
 
 
-def _update_headings(headings: dict[int, str], level: int | None, text: str) -> dict[int, str]:
-    if level is None:
-        return headings
-    return {**{key: value for key, value in headings.items() if key < level}, level: text}
-
-
 def _column_headers(table: Table) -> tuple[str, ...] | None:
     if not table.rows:
         return None
     first = table.rows[0]
     cells = tuple(cell.text.strip() for cell in first.cells)
-    explicit = first._tr.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}trPr")
-    if (
-        explicit is not None
-        and explicit.find("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblHeader")
-        is not None
-    ):
+    if first._tr.xpath("./w:trPr/w:tblHeader"):
         return cells
     names = {
         "параметр",

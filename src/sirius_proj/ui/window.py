@@ -58,9 +58,8 @@ class MainWindow(QMainWindow):
         self.service_factory = service_factory
         self.report_writer = report_writer
         self.installer = installer
-        self.setup_worker = None
         self.preferences = QSettings("Sirius2026", "DocumentReview")
-        self.worker = None
+        self.worker: CheckWorker | SetupWorker | None = None
         self.report: CheckReport | None = None
         self.pending_close = False
         self.setWindowTitle("Контроль документации · Сириус")
@@ -163,42 +162,34 @@ class MainWindow(QMainWindow):
         form.addRow("", self.prepare_button)
         return panel
 
-    def _initial_setup(self):
-        settings = replace(
+    def _settings(self) -> Settings:
+        return replace(
             self.defaults,
             server_binary=Path(self.server_edit.text()),
             model_file=Path(self.model_edit.text()),
             embedding_dir=Path(self.embedding_edit.text()),
+            use_gpu=self.gpu_check.isChecked(),
+            force_rag=self.rag_check.isChecked(),
         )
-        if settings.missing_components:
+
+    def _initial_setup(self):
+        if self._settings().missing_components:
             self.prepare_components()
 
     def prepare_components(self):
-        if self.installer is None or self.worker is not None or self.setup_worker is not None:
+        if self.installer is None or self.worker is not None:
             return
-        self._set_busy(True)
         self.progress.setRange(0, 0)
-        self.setup_worker = SetupWorker(self.installer)
-        self.setup_worker.progress.connect(self.message.setText)
-        self.setup_worker.prepared.connect(self._components_ready)
-        self.setup_worker.failed.connect(self._on_failure)
-        self.setup_worker.finished.connect(self._setup_finished)
-        self.setup_worker.start()
+        worker = SetupWorker(self.installer)
+        worker.progress.connect(self.message.setText)
+        worker.prepared.connect(self._components_ready)
+        self._start_worker(worker)
 
     def _components_ready(self, settings):
         self.defaults = settings
         self.server_edit.setText(str(settings.server_binary))
         self.model_edit.setText(str(settings.model_file))
         self.embedding_edit.setText(str(settings.embedding_dir))
-
-    def _setup_finished(self):
-        self.setup_worker.deleteLater()
-        self.setup_worker = None
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        self._set_busy(False)
-        if self.pending_close:
-            self.close()
 
     def _toggle_settings(self, checked):
         self.settings_panel.setVisible(checked)
@@ -272,22 +263,14 @@ class MainWindow(QMainWindow):
         return splitter
 
     def start_check(self):
-        if self.worker is not None or self.setup_worker is not None:
+        if self.worker is not None:
             return
-        settings = replace(
-            self.defaults,
-            server_binary=Path(self.server_edit.text()),
-            model_file=Path(self.model_edit.text()),
-            embedding_dir=Path(self.embedding_edit.text()),
-            use_gpu=self.gpu_check.isChecked(),
-            force_rag=self.rag_check.isChecked(),
-        )
+        settings = self._settings()
         document = Path(self.document_edit.text())
         checklist = Path(self.checklist_edit.text())
         try:
             if not document.is_file() or not checklist.is_file():
                 raise ValueError("Выберите существующие документ и чек-лист")
-            settings.validate()
             service = self.service_factory(settings)
         except ValueError as error:
             QMessageBox.warning(self, "Проверка не запущена", str(error))
@@ -302,14 +285,18 @@ class MainWindow(QMainWindow):
         self.table.clear_results()
         self.details.clear()
         self.summary.setText("Проверено: 0")
+        worker = CheckWorker(document, checklist, service)
+        worker.progress.connect(self._on_progress)
+        worker.result.connect(self._on_result)
+        worker.report_ready.connect(self._on_report)
+        self._start_worker(worker)
+
+    def _start_worker(self, worker: CheckWorker | SetupWorker):
+        self.worker = worker
         self._set_busy(True)
-        self.worker = CheckWorker(document, checklist, service)
-        self.worker.progress.connect(self._on_progress)
-        self.worker.result.connect(self._on_result)
-        self.worker.report_ready.connect(self._on_report)
-        self.worker.failed.connect(self._on_failure)
-        self.worker.finished.connect(self._on_finished)
-        self.worker.start()
+        worker.failed.connect(self._on_failure)
+        worker.finished.connect(self._on_finished)
+        worker.start()
 
     def _set_busy(self, busy):
         self.input_card.setEnabled(not busy)
@@ -351,7 +338,10 @@ class MainWindow(QMainWindow):
 
     def _on_finished(self):
         self.progress.setRange(0, 100)
-        self.progress.setValue(100 if self.report and not self.report.cancelled else 0)
+        completed = (
+            isinstance(self.worker, CheckWorker) and self.report and not self.report.cancelled
+        )
+        self.progress.setValue(100 if completed else 0)
         self._set_busy(False)
         self.worker.deleteLater()
         self.worker = None
@@ -387,14 +377,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Не удалось сохранить отчёт", str(error))
 
     def cancel_check(self):
-        active = self.worker or self.setup_worker
+        active = self.worker
         if active is not None:
             active.cancel_event.set()
             self.cancel_button.setEnabled(False)
             self.message.setText("Остановка текущей операции…")
 
     def closeEvent(self, event):
-        active = self.worker or self.setup_worker
+        active = self.worker
         if active is not None and active.isRunning():
             self.pending_close = True
             self.cancel_check()

@@ -61,22 +61,20 @@ def mock_runtime(monkeypatch, code=200, process=None):
 def test_owned_server_is_local_offline_and_terminated(settings, monkeypatch):
     process, captured = mock_runtime(monkeypatch)
     monkeypatch.setenv("LLAMA_ARG_RPC", "remote.invalid:1234")
-    runtime = llama.LlamaServer(settings)
-    with runtime as judge:
-        assert runtime.process is process
-        assert judge.client is runtime.client
+    with llama.open_llama(settings) as judge:
         assert "127.0.0.1" in captured["command"]
         assert "--offline" in captured["command"]
         assert "LLAMA_ARG_RPC" not in captured["env"]
-        assert runtime.client.trust_env is False
+        assert judge.client.trust_env is False
     assert process.terminated
-    assert runtime.log.closed
+    assert captured["stdout"].closed
+    assert judge.client.is_closed
 
 
 def test_model_startup_timeout_cleans_up(settings, monkeypatch):
     process, _ = mock_runtime(monkeypatch, code=503)
     with pytest.raises(TimeoutError):
-        with llama.LlamaServer(replace(settings, startup_timeout=0.01)):
+        with llama.open_llama(replace(settings, startup_timeout=0.01)):
             pytest.fail("Сервер ещё не готов к работе")
     assert process.terminated
 
@@ -84,7 +82,7 @@ def test_model_startup_timeout_cleans_up(settings, monkeypatch):
 def test_cancel_during_startup_cleans_up(settings, monkeypatch):
     process, _ = mock_runtime(monkeypatch)
     with pytest.raises(InterruptedError):
-        with llama.LlamaServer(settings, lambda: True):
+        with llama.open_llama(settings, lambda: True):
             pytest.fail("Запуск сервера должен быть отменён")
     assert process.terminated
 
@@ -96,7 +94,7 @@ def test_process_crash_explains_startup_failure(settings, monkeypatch):
 
     mock_runtime(monkeypatch, process=DeadProcess())
     with pytest.raises(RuntimeError, match="завершился"):
-        with llama.LlamaServer(settings):
+        with llama.open_llama(settings):
             pytest.fail("Процесс сервера уже завершился")
 
 
@@ -122,16 +120,22 @@ def test_nvidia_is_preferred_over_integrated_gpu(monkeypatch, settings):
 
 
 def test_device_detection_failure_closes_resources(settings, monkeypatch):
-    mock_runtime(monkeypatch)
+    _, captured = mock_runtime(monkeypatch)
+    clients = []
+    original = llama.httpx.Client
+
+    def track_client(**kwargs):
+        client = original(**kwargs)
+        clients.append(client)
+        return client
 
     def fail(*args):
         raise RuntimeError("Не удалось определить доступные устройства")
 
+    monkeypatch.setattr(llama.httpx, "Client", track_client)
     monkeypatch.setattr(llama, "device_arguments", fail)
-    server = llama.LlamaServer(settings)
     with pytest.raises(RuntimeError, match="Не удалось определить"):
-        with server:
+        with llama.open_llama(settings):
             pytest.fail("Сервер не должен запускаться после ошибки выбора устройства")
-    assert server.log.closed
-    assert server.client.is_closed
-    assert server.process is None
+    assert clients[0].is_closed
+    assert not captured
