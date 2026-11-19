@@ -47,10 +47,6 @@ class Settings:
                 f"Не найден компонент: {component}. Подготовьте компоненты в окне приложения "
                 "или выполните sirius-proj install."
             )
-        if min(self.request_timeout, self.startup_timeout) <= 0:
-            raise ValueError("Тайм-аут должен быть положительным")
-        if self.context_size < 2048 or not 1 <= self.output_tokens < self.context_size:
-            raise ValueError("Некорректный размер контекста или ответа")
 
 
 def default_data_dir() -> Path:

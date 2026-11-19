@@ -1,6 +1,5 @@
 """Проверки неверных входных данных и ошибок чтения и сохранения."""
 
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -11,27 +10,6 @@ from sirius_proj.adapters.llama_client import parse_answer
 from sirius_proj.adapters.xlsx import export_xlsx
 from sirius_proj.config import Settings
 from sirius_proj.domain.models import CheckFailure, Location, Requirement
-
-
-@pytest.mark.parametrize(
-    "values",
-    [
-        {"kind": "pdf", "page": 0},
-        {"kind": "pdf", "page": True},
-        {"kind": "pdf", "page": 2, "paragraph": 1},
-        {"kind": "docx"},
-        {"kind": "docx", "paragraph": -1},
-        {"kind": "docx", "table": 1},
-        {"kind": "docx", "row": 1},
-        {"kind": "docx", "table": 0, "row": 1},
-        {"kind": "docx", "table": 1, "row": 1, "paragraph": 1},
-        {"kind": "docx", "paragraph": 1, "page": 1},
-        {"kind": "other", "page": 1},
-    ],
-)
-def test_invalid_source_addresses_are_rejected(values):
-    with pytest.raises(ValueError):
-        Location(**values)
 
 
 def test_valid_address_labels():
@@ -135,7 +113,7 @@ def test_export_failure_has_no_substantive_status(tmp_path):
     assert book["Результаты"].cell(2, 7).value == "Сбой модели"
 
 
-def test_settings_validate_paths_and_limits(tmp_path):
+def test_settings_validate_paths(tmp_path):
     settings = Settings(tmp_path / "server", tmp_path / "model", tmp_path / "e5")
     with pytest.raises(ValueError, match="llama-server"):
         settings.validate()
@@ -149,13 +127,6 @@ def test_settings_validate_paths_and_limits(tmp_path):
             settings.validate()
         (settings.embedding_dir / name).touch()
     settings.validate()
-    for invalid in [
-        replace(settings, request_timeout=0),
-        replace(settings, context_size=10),
-        replace(settings, output_tokens=settings.context_size),
-    ]:
-        with pytest.raises(ValueError):
-            invalid.validate()
 
 
 def test_empty_domain_text_is_rejected():

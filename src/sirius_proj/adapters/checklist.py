@@ -7,19 +7,20 @@ from typing import Self
 from docx import Document
 from docx.document import Document as WordDocument
 from docx.opc.exceptions import PackageNotFoundError
-from docx.table import _Row
+from docx.table import _Cell
 
 from sirius_proj.adapters.report_files import save_atomic
 from sirius_proj.domain.models import CheckFailure, CheckKind, CheckReport, Requirement
 
-REQUIRED = {"требование", "результат и обоснование", "подтверждение"}
+RESULT = "результат и обоснование"
+CONFIRMATION = "подтверждение"
+REQUIRED = {"требование", RESULT, CONFIRMATION}
 
 
 @dataclass(frozen=True)
 class WordChecklist:
     document: WordDocument
-    rows: dict[str, _Row]
-    columns: dict[str, int]
+    rows: dict[str, dict[str, _Cell]]
     requirements: tuple[Requirement, ...]
 
     @classmethod
@@ -31,40 +32,38 @@ class WordChecklist:
         candidates = []
         for table in document.tables:
             if table.rows:
-                columns = {
-                    " ".join(cell.text.casefold().split()): i
-                    for i, cell in enumerate(table.rows[0].cells)
-                }
-                if REQUIRED <= columns.keys():
+                header = table.rows[0]
+                columns = [""] * header.grid_cols_before + [
+                    " ".join(cell.text.casefold().split()) for cell in header.cells
+                ]
+                if REQUIRED.issubset(columns):
                     candidates.append((table, columns))
         if len(candidates) != 1:
             raise ValueError(
                 "В DOCX нужна одна таблица с требованиями, результатами и подтверждением"
             )
         table, columns = candidates[0]
-        numbers = columns.get("№ п/п", columns.get("№"))
-        method = columns.get("тип проверки", columns.get("типа проверки"))
         rows, requirements = {}, []
-        width = len(table.rows[0].cells)
         for number, row in enumerate(table.rows[1:], 1):
-            cells = row.cells
-            if len(cells) != width:
-                raise ValueError(f"Строка {number}: неверное число ячеек чек-листа")
-            criterion = cells[columns["требование"]].text.strip()
-            if not criterion and not any(cell.text.strip() for cell in cells):
+            cells = dict(zip(columns[row.grid_cols_before :], row.cells, strict=False))
+            fields = {
+                name: cell.text.strip()
+                for name, cell in cells.items()
+                if name not in (RESULT, CONFIRMATION)
+            }
+            criterion = fields.get("требование")
+            if not criterion:
                 continue
-            if any(cells[columns[name]].text.strip() for name in REQUIRED - {"требование"}):
-                raise ValueError("Чек-лист уже заполнен. Выберите пустой шаблон для проверки.")
-            identifier = (cells[numbers].text.strip() if numbers is not None else "") or str(number)
+            identifier = fields.get("№ п/п", fields.get("№")) or str(number)
             if identifier in rows:
                 raise ValueError(f"Повторяется номер требования: {identifier}")
-            comment = cells[columns["комментарий"]].text.strip() if "комментарий" in columns else ""
-            kind = parse_kind(cells[method].text) if method is not None else CheckKind.CONTENT
+            comment = fields.get("комментарий", "")
+            kind = parse_kind(fields.get("тип проверки", fields.get("типа проверки", "")))
             requirements.append(Requirement(identifier, criterion, comment, kind))
-            rows[identifier] = row
+            rows[identifier] = cells
         if not requirements:
             raise ValueError("Чек-лист не содержит требований")
-        return cls(document, rows, columns, tuple(requirements))
+        return cls(document, rows, tuple(requirements))
 
 
 def parse_kind(value: str) -> CheckKind:
@@ -81,15 +80,15 @@ def write_docx_report(path: Path, report: CheckReport) -> None:
     if report.checklist_path is None or report.checklist_path.suffix.lower() != ".docx":
         raise ValueError("Для заполнения отчёта DOCX нужен исходный чек-лист DOCX")
     checklist = WordChecklist.read(report.checklist_path)
-    originals = {req.id: req for req in checklist.requirements}
-    for result in report.results:
-        if originals.get(result.requirement.id) != result.requirement:
-            raise ValueError("Шаблон изменился после проверки. Запустите проверку заново.")
-        cells = checklist.rows[result.requirement.id].cells
+    results = {result.requirement: result for result in report.results}
+    if results.keys() - set(checklist.requirements):
+        raise ValueError("Шаблон изменился после проверки. Запустите проверку заново.")
+    for requirement in checklist.requirements:
+        result = results.get(requirement)
+        state = evidence = ""
         if isinstance(result, CheckFailure):
             state = f"Техническая ошибка\n{result.message}"
-            evidence = ""
-        else:
+        elif result is not None:
             state = f"{result.status.label}\n{result.explanation}"
             evidence = "\n".join(
                 f"{item.location.label}\n{item.quote}"
@@ -97,8 +96,10 @@ def write_docx_report(path: Path, report: CheckReport) -> None:
                 else f"{item.location.label}\n«{item.quote}»"
                 for item in result.evidence
             )
-        cells[checklist.columns["результат и обоснование"]].text = state
-        cells[checklist.columns["подтверждение"]].text = evidence
+        cells = checklist.rows[requirement.id]
+        for column, text in ((RESULT, state), (CONFIRMATION, evidence)):
+            if column in cells:
+                cells[column].text = text
     if report.cancelled:
         checklist.document.add_paragraph("Проверка отменена. Заполнены только завершённые пункты.")
     save_atomic(path, checklist.document.save)

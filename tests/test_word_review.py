@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Mm
 
 from sirius_proj.adapters.documents import load_checklist, read_document
@@ -54,7 +56,14 @@ def test_word_template_routes_numbered_rows_and_preserves_sources(tmp_path):
             "Комментарий",
             "Тип проверки",
         ),
-        ("", "Файл отчета имеет формат A4", "", "", "Свойства Word", "Метаданные"),
+        (
+            "",
+            "Файл отчета имеет формат A4",
+            "Старый вывод",
+            "Старая цитата",
+            "Свойства Word",
+            "Метаданные",
+        ),
         ("", "Отчёт содержит обязательный раздел «Введение»", "", "", "", "Структура/оглавление"),
         ("", "Отчёт содержит обязательный раздел «Заключение»", "", "", "", "Структура/оглавление"),
         (
@@ -78,6 +87,11 @@ def test_word_template_routes_numbered_rows_and_preserves_sources(tmp_path):
         row = table.rows[0] if i == 0 else table.add_row()
         for cell, value in zip(row.cells, values, strict=True):
             cell.text = value
+    first = table.rows[1]
+    first._tr.remove(first.cells[0]._tc)
+    omitted = OxmlElement("w:gridBefore")
+    omitted.set(qn("w:val"), "1")
+    first._tr.get_or_add_trPr().append(omitted)
     template.save(checklist)
 
     def unused(*args):
@@ -101,11 +115,19 @@ def test_word_template_routes_numbered_rows_and_preserves_sources(tmp_path):
     rows = Document(output).tables[0].rows
     assert "Частично соответствует" in rows[4].cells[2].text
     assert "Калибровка – сравнение с эталоном." in rows[4].cells[3].text
-    assert rows[1].cells[4].text == "Свойства Word"
-    with pytest.raises(ValueError, match="уже заполнен"):
-        load_checklist(output)
+    assert rows[1].cells[3].text == "Свойства Word"
+    assert rows[1].cells[1].text.startswith("Соответствует\n")
+    assert "Старая цитата" not in rows[1].cells[2].text
+    assert load_checklist(output) == load_checklist(checklist)
     with pytest.raises(ValueError, match="исходные файлы"):
         write_report(checklist, report)
+
+    partial_path = tmp_path / "частичный отчёт.docx"
+    partial = replace(report, checklist_path=output, results=report.results[:1], cancelled=True)
+    write_report(partial_path, partial)
+    rows = Document(partial_path).tables[0].rows
+    assert rows[1].cells[1].text.startswith("Соответствует\n")
+    assert all(not cell.text for row in rows[2:] for cell in row.cells[2:4])
 
 
 @pytest.mark.parametrize(

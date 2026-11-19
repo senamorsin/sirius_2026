@@ -108,7 +108,7 @@ class MainWindow(QMainWindow):
         self.document_edit = QLineEdit()
         self.document_edit.setPlaceholderText("Отчёт подрядчика · DOCX или PDF с текстовым слоем")
         self.checklist_edit = QLineEdit()
-        self.checklist_edit.setPlaceholderText("Пустой шаблон DOCX или CSV с требованиями")
+        self.checklist_edit.setPlaceholderText("Чек-лист DOCX или CSV с требованиями")
         doc_button = QPushButton("Выбрать…")
         doc_button.clicked.connect(
             lambda: self._choose(self.document_edit, "Документы (*.docx *.pdf)")

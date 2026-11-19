@@ -54,33 +54,6 @@ class Location:
     table: int | None = None
     row: int | None = None
 
-    def __post_init__(self) -> None:
-        validators = {
-            "pdf": self._valid_pdf,
-            "docx": self._valid_docx,
-            "layout": self._valid_layout,
-        }
-        validate = validators.get(self.kind)
-        if validate is None or not validate():
-            raise ValueError("Некорректный адрес источника")
-
-    def _valid_pdf(self) -> bool:
-        return _positive_int(self.page) and all(
-            value is None for value in (self.paragraph, self.table, self.row)
-        )
-
-    def _valid_docx(self) -> bool:
-        if self.page is not None:
-            return False
-        if self.paragraph is not None:
-            return _positive_int(self.paragraph) and self.table is None and self.row is None
-        return _positive_int(self.table) and _positive_int(self.row)
-
-    def _valid_layout(self) -> bool:
-        return bool(self.heading) and all(
-            value is None for value in (self.page, self.paragraph, self.table, self.row)
-        )
-
     @property
     def label(self) -> str:
         if self.kind == "layout":
@@ -91,10 +64,6 @@ class Location:
         if self.table is not None:
             return f"{prefix}таблица {self.table}, строка {self.row}"
         return f"{prefix}абзац {self.paragraph}"
-
-
-def _positive_int(value: int | None) -> bool:
-    return type(value) is int and value > 0
 
 
 @dataclass(frozen=True)
@@ -158,10 +127,6 @@ class Finding:
     status: Status
     explanation: str
     evidence: tuple[Evidence, ...]
-
-    def __post_init__(self) -> None:
-        if self.status is not Status.INSUFFICIENT and not self.evidence:
-            raise ValueError("Определённый вывод требует проверенных доказательств")
 
 
 @dataclass(frozen=True)

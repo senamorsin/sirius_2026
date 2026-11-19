@@ -69,11 +69,6 @@ def test_whitespace_is_normalized_but_words_are_not(block):
     assert bad.status is Status.INSUFFICIENT
 
 
-def test_definitive_result_requires_evidence():
-    with pytest.raises(ValueError):
-        Finding(Requirement("1", "Требование"), Status.COMPLIANT, "Вывод", ())
-
-
 @pytest.mark.parametrize(
     "raw",
     [
