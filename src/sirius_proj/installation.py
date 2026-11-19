@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import platform
-import shutil
 import subprocess
 import sys
 import tarfile
@@ -199,20 +198,23 @@ def load_xcb_cursor(root: Path) -> bool:
 def prepare_desktop(root: Path, progress: Callable[[str], None] = print) -> None:
     if sys.platform != "linux" or load_xcb_cursor(root):
         return
-    if not all(shutil.which(tool) for tool in ("apt-get", "dpkg-deb")):
-        raise RuntimeError(
-            "Установите системную libxcb-cursor0; локальная подготовка поддерживает Debian/Ubuntu"
-        )
     progress("Подготовка компонента Qt для рабочего стола…")
     destination = root / "runtime/qt"
     destination.mkdir(parents=True, exist_ok=True)
     try:
         _install_cursor(destination)
+    except FileNotFoundError as error:
+        raise RuntimeError(
+            "Установите системную libxcb-cursor0. Для автоматической установки нужны "
+            "apt-get и dpkg-deb."
+        ) from error
     except subprocess.SubprocessError as error:
         raise RuntimeError(
             "Не удалось подготовить libxcb-cursor0. Проверьте доступ к репозиториям "
             "Debian/Ubuntu и повторите sirius-proj install."
         ) from error
+    if not load_xcb_cursor(root):
+        raise RuntimeError("Qt не может загрузить libxcb-cursor.so.0 после установки")
 
 
 def _install_cursor(destination: Path):
@@ -260,6 +262,8 @@ def _install_components(root, progress, cancelled) -> Settings:
         archive = download(artifact, root, progress, cancelled)
         extract_runtime(archive, runtime, archive.name)
     settings = default_settings(root)
-    settings.validate()
+    if missing := settings.missing_components:
+        names = ", ".join(path.name for path in missing)
+        raise RuntimeError(f"После установки отсутствуют файлы: {names}")
     progress("Все компоненты подготовлены. Можно запускать проверку.")
     return settings

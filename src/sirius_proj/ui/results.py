@@ -12,10 +12,6 @@ class ResultTable(QTableWidget):
         super().__init__(0, 4)
         self._results: list[CheckResult] = []
 
-    @property
-    def results(self) -> tuple[CheckResult, ...]:
-        return tuple(self._results)
-
     def clear_results(self):
         self.clearSelection()
         self._results.clear()

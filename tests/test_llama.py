@@ -7,6 +7,8 @@ from sirius_proj.adapters.llama_client import LlamaJudge
 from sirius_proj.application.errors import CheckError
 from sirius_proj.domain.models import Block, Location, Requirement, Status
 
+SOURCE = (Block("row", "2", Location("docx", table=1, row=1)),)
+
 
 def runtime(handler):
     client = httpx.Client(transport=httpx.MockTransport(handler), base_url="http://127.0.0.1:12345")
@@ -51,7 +53,7 @@ def test_model_receives_table_context_without_owning_source_addresses():
 def test_http_error_is_technical_failure(code):
     llm = runtime(lambda request: httpx.Response(code, json={"error": "bad"}))
     with pytest.raises(RuntimeError, match="локальной модели"):
-        llm.assess(Requirement("1", "Питание"), [])
+        llm.assess(Requirement("1", "Питание"), SOURCE)
     llm.client.close()
 
 
@@ -60,7 +62,7 @@ def test_truncated_generation_is_not_a_document_status():
         lambda request: httpx.Response(200, json={"choices": [{"finish_reason": "length"}]})
     )
     with pytest.raises(CheckError, match="обрезан"):
-        llm.assess(Requirement("1", "Питание"), [])
+        llm.assess(Requirement("1", "Питание"), SOURCE)
     llm.client.close()
 
 
@@ -95,7 +97,7 @@ def test_foreign_explanation_is_translated_without_changing_decision_or_citation
         )
 
     llm = runtime(handler)
-    answer = llm.assess(Requirement("R", "Редакция 4"), [])
+    answer = llm.assess(Requirement("R", "Редакция 4"), SOURCE)
     assert answer.status is Status.NON_COMPLIANT
     assert answer.evidence[0].chunk_id == "row"
     assert answer.evidence[0].quote == "2"
@@ -126,7 +128,7 @@ def test_explanation_still_in_foreign_language_is_a_technical_error():
 
     llm = runtime(handler)
     with pytest.raises(CheckError, match="на русском языке"):
-        llm.assess(Requirement("R", "Параметр"), [])
+        llm.assess(Requirement("R", "Параметр"), SOURCE)
     assert count == 2
     llm.client.close()
 

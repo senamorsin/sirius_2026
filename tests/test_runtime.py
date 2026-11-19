@@ -14,9 +14,6 @@ def settings(tmp_path):
     server, model, e5 = tmp_path / "server", tmp_path / "model.gguf", tmp_path / "e5"
     server.touch()
     model.touch()
-    e5.mkdir()
-    for name in ("model.onnx", "tokenizer.json"):
-        (e5 / name).touch()
     return Settings(server, model, e5)
 
 

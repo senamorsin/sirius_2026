@@ -126,6 +126,13 @@ def parse_answer(
             if source is not None and (source.chunk_id != key or quote == ""):
                 citation = source
             else:
+                if not (
+                    isinstance(key, str)
+                    and key.strip()
+                    and isinstance(quote, str)
+                    and quote.strip()
+                ):
+                    raise ValueError("Цитата должна содержать идентификатор и текст")
                 citation = Citation(key, quote)
             citations.append(citation)
         if status is not Status.INSUFFICIENT and not citations:
@@ -147,13 +154,9 @@ class LlamaJudge:
         if requirement.comment:
             data["method"] = requirement.comment
         schema = deepcopy(ANSWER_SCHEMA)
-        evidence_schema = schema["properties"]["evidence"]
-        if sources:
-            fields = evidence_schema["items"]["properties"]
-            fields["chunk_id"]["enum"] = list(sources)
-            fields["quote"]["enum"] = [""]
-        else:
-            evidence_schema["maxItems"] = 0
+        fields = schema["properties"]["evidence"]["items"]["properties"]
+        fields["chunk_id"]["enum"] = list(sources)
+        fields["quote"]["enum"] = [""]
         payload = {
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},

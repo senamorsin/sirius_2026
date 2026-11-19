@@ -40,7 +40,6 @@ def open_llama(
     settings: Settings, cancelled: Callable[[], bool] = lambda: False
 ) -> Iterator[LlamaJudge]:
     """Запускает сервер на время проверки и закрывает его при выходе."""
-    settings.validate()
     port = available_port()
     with (
         tempfile.TemporaryFile(mode="w+b") as log,

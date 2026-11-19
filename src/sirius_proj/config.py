@@ -35,19 +35,6 @@ class Settings:
             )
         return tuple(path for path in paths if not path.is_file())
 
-    def validate(self) -> None:
-        if missing := self.missing_components:
-            if missing[0] == self.server_binary:
-                component = "llama-server"
-            elif missing[0] == self.model_file:
-                component = "GGUF-модель"
-            else:
-                component = missing[0].name
-            raise ValueError(
-                f"Не найден компонент: {component}. Подготовьте компоненты в окне приложения "
-                "или выполните sirius-proj install."
-            )
-
 
 def default_data_dir() -> Path:
     if os.environ.get("SIRIUS_DATA_DIR"):

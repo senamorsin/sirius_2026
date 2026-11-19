@@ -88,8 +88,7 @@ def test_csv_bom_and_duplicate_ids(tmp_path):
     path.write_text("\ufeffid,requirement\nA,Питание 220 В\n", encoding="utf-8")
     assert load_checklist(path) == (Requirement("A", "Питание 220 В"),)
     path.write_text("id,requirement\nA,Первое\nA,Второе\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="A"):
-        load_checklist(path)
+    assert load_checklist(path) == (Requirement("A", "Первое"), Requirement("A", "Второе"))
 
 
 def test_docx_retains_order_and_locations(tmp_path):

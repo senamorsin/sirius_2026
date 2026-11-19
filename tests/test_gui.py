@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 import sirius_proj.ui.window as gui
 from sirius_proj.adapters.documents import read_document
 from sirius_proj.adapters.xlsx import write_report
+from sirius_proj.bootstrap import create_service
 from sirius_proj.config import Settings
 from sirius_proj.domain.models import (
     CheckFailure,
@@ -41,7 +42,11 @@ def window(app, tmp_path, monkeypatch):
     settings.embedding_dir.mkdir()
     for name in ("model.onnx", "tokenizer.json"):
         (settings.embedding_dir / name).touch()
-    widget = gui.MainWindow(settings, lambda settings: None, write_report)
+
+    def unused_installer(*args):
+        pytest.fail("Все компоненты уже установлены")
+
+    widget = gui.MainWindow(settings, create_service, write_report, unused_installer)
     widget.server_edit.setText(str(settings.server_binary))
     widget.model_edit.setText(str(settings.model_file))
     widget.embedding_edit.setText(str(settings.embedding_dir))
@@ -112,22 +117,14 @@ def test_run_uses_worker_and_clears_previous_results(window, app, monkeypatch):
     assert window.report is report
 
 
-def test_invalid_paths_do_not_start_worker(window):
-    window.document_edit.setText("missing.pdf")
+def test_reader_reports_missing_file_in_window(window, app, tmp_path):
+    window.document_edit.setText(str(tmp_path / "missing.pdf"))
     window.start_check()
+    deadline = monotonic() + 5
+    while window.worker is not None and monotonic() < deadline:
+        app.processEvents()
     assert window.worker is None
-
-
-def test_service_configuration_failure_is_shown_without_starting_worker(window):
-    window.document_edit.setText(str(Path("examples/report.pdf").resolve()))
-    window.checklist_edit.setText(str(Path("examples/checklist.csv").resolve()))
-
-    def fail(settings):
-        raise ValueError("Недоступна конфигурация модели")
-
-    window.service_factory = fail
-    window.start_check()
-    assert window.worker is None
+    assert "missing.pdf" in window.message.text()
     assert window.run_button.isEnabled()
 
 

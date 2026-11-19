@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from sirius_proj.application.review import ReviewService
 from sirius_proj.config import Settings
-from sirius_proj.domain.models import CheckFailure, CheckReport, CheckResult, Status
+from sirius_proj.domain.models import CheckFailure, CheckReport, Status
 from sirius_proj.ui.results import ResultTable, describe_result
 from sirius_proj.ui.style import STYLE
 from sirius_proj.ui.worker import CheckWorker, Installer, SetupWorker
@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
         defaults: Settings,
         service_factory: Callable[[Settings], ReviewService],
         report_writer: Callable[[Path, CheckReport], None],
-        installer: Installer | None = None,
+        installer: Installer,
     ):
         super().__init__()
         self.defaults = defaults
@@ -67,8 +67,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 720)
         self.setStyleSheet(STYLE)
         self._build_ui()
-        if installer is not None:
-            QTimer.singleShot(0, self._initial_setup)
+        QTimer.singleShot(0, self._initial_setup)
 
     def _build_ui(self):
         root = QWidget()
@@ -157,7 +156,6 @@ class MainWindow(QMainWindow):
         self.rag_check.setChecked(self.defaults.force_rag)
         form.addRow("", self.rag_check)
         self.prepare_button = QPushButton("Подготовить компоненты")
-        self.prepare_button.setEnabled(self.installer is not None)
         self.prepare_button.clicked.connect(self.prepare_components)
         form.addRow("", self.prepare_button)
         return panel
@@ -177,7 +175,7 @@ class MainWindow(QMainWindow):
             self.prepare_components()
 
     def prepare_components(self):
-        if self.installer is None or self.worker is not None:
+        if self.worker is not None:
             return
         self.progress.setRange(0, 0)
         worker = SetupWorker(self.installer)
@@ -268,13 +266,6 @@ class MainWindow(QMainWindow):
         settings = self._settings()
         document = Path(self.document_edit.text())
         checklist = Path(self.checklist_edit.text())
-        try:
-            if not document.is_file() or not checklist.is_file():
-                raise ValueError("Выберите существующие документ и чек-лист")
-            service = self.service_factory(settings)
-        except ValueError as error:
-            QMessageBox.warning(self, "Проверка не запущена", str(error))
-            return
         for key, value in [
             ("server", settings.server_binary),
             ("model", settings.model_file),
@@ -285,7 +276,7 @@ class MainWindow(QMainWindow):
         self.table.clear_results()
         self.details.clear()
         self.summary.setText("Проверено: 0")
-        worker = CheckWorker(document, checklist, service)
+        worker = CheckWorker(document, checklist, self.service_factory(settings))
         worker.progress.connect(self._on_progress)
         worker.result.connect(self._on_result)
         worker.report_ready.connect(self._on_report)
@@ -302,20 +293,16 @@ class MainWindow(QMainWindow):
         self.input_card.setEnabled(not busy)
         self.run_button.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)
-        self.export_button.setEnabled(not busy and self.report is not None and bool(self.results))
+        self.export_button.setEnabled(not busy and self.report is not None)
 
     def _on_progress(self, done, total, message):
         self.progress.setRange(0, total)
         self.progress.setValue(done)
         self.message.setText(message)
 
-    @property
-    def results(self) -> tuple[CheckResult, ...]:
-        return self.table.results
-
     def _on_result(self, result):
         self.table.append_result(result)
-        self.summary.setText(f"Проверено: {len(self.results)}")
+        self.summary.setText(f"Проверено: {self.table.rowCount()}")
         self._filter_rows()
 
     def _on_report(self, report):
@@ -393,7 +380,7 @@ class MainWindow(QMainWindow):
             event.accept()
 
 
-def launch(settings: Settings, service_factory, report_writer, installer=None) -> int:
+def launch(settings: Settings, service_factory, report_writer, installer: Installer) -> int:
     app = QApplication.instance() or QApplication([])
     window = MainWindow(settings, service_factory, report_writer, installer)
     window.show()

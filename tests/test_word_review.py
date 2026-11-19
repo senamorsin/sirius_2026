@@ -18,13 +18,58 @@ from sirius_proj.bootstrap import write_report
 from sirius_proj.domain.models import (
     Block,
     CheckKind,
+    CheckReport,
     Citation,
     DocumentText,
+    Finding,
     Location,
     ModelAnswer,
     Requirement,
     Status,
 )
+
+
+def test_word_report_associates_results_with_rows_even_when_ids_repeat(tmp_path):
+    path = tmp_path / "checklist.docx"
+    template = Document()
+    labels = ("№", "Требование", "Результат и обоснование", "Подтверждение", "Тип проверки")
+    for value in ("Основное требование", "Основное требование", ""):
+        table = template.add_table(rows=2, cols=len(labels))
+        for cell, label in zip(table.rows[0].cells, labels, strict=True):
+            cell.text = label
+        for cell, text in zip(table.rows[1].cells, ("1", value, "", "", "По тексту"), strict=True):
+            cell.text = text
+    template.save(path)
+    requirement = Requirement("1", "Основное требование")
+    assert load_checklist(path) == (requirement, requirement)
+    report = CheckReport(
+        DocumentText(tmp_path / "input.pdf", ()),
+        (
+            Finding(requirement, Status.COMPLIANT, "Первый результат.", ()),
+            Finding(requirement, Status.PARTIAL, "Второй результат.", ()),
+        ),
+        0.0,
+        checklist_path=path,
+    )
+    output = tmp_path / "checked.docx"
+    write_report(output, report)
+    assert [table.rows[1].cells[2].text for table in Document(output).tables] == [
+        "Соответствует\nПервый результат.",
+        "Частично соответствует\nВторой результат.",
+        "",
+    ]
+
+
+def test_word_checklist_with_only_header_is_empty(tmp_path):
+    path = tmp_path / "checklist.docx"
+    template = Document()
+    table = template.add_table(rows=1, cols=3)
+    for cell, title in zip(
+        table.rows[0].cells, ("Требование", "Результат и обоснование", "Подтверждение"), strict=True
+    ):
+        cell.text = title
+    template.save(path)
+    assert load_checklist(path) == ()
 
 
 def test_word_template_routes_numbered_rows_and_preserves_sources(tmp_path):

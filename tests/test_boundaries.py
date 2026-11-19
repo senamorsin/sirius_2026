@@ -8,7 +8,6 @@ from pypdf import PdfReader, PdfWriter
 from sirius_proj.adapters.documents import load_checklist, read_document
 from sirius_proj.adapters.llama_client import parse_answer
 from sirius_proj.adapters.xlsx import export_xlsx
-from sirius_proj.config import Settings
 from sirius_proj.domain.models import CheckFailure, Location, Requirement
 
 
@@ -18,21 +17,24 @@ def test_valid_address_labels():
     assert "строка 3" in Location("docx", table=2, row=3).label
 
 
-@pytest.mark.parametrize(
-    "text",
-    [
-        "wrong,headers\n1,abc\n",
-        "id,requirement\n",
-        "id,requirement\n1,\n",
-        "id,requirement\n1,a,b\n",
-        "id,requirement\n1\n",
-    ],
-)
-def test_bad_checklist_has_actionable_error(tmp_path, text):
+def test_csv_missing_requirement_column_has_actionable_error(tmp_path):
     path = tmp_path / "bad.csv"
-    path.write_text(text, encoding="utf-8")
-    with pytest.raises(ValueError):
+    path.write_text("wrong,headers\n1,abc\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="requirement"):
         load_checklist(path)
+
+
+@pytest.mark.parametrize("text", ["", "id,requirement\n", "id,requirement\n1,\n"])
+def test_csv_without_items_is_empty(tmp_path, text):
+    path = tmp_path / "checklist.csv"
+    path.write_text(text, encoding="utf-8")
+    assert load_checklist(path) == ()
+
+
+def test_csv_uses_only_columns_needed_for_a_requirement(tmp_path):
+    path = tmp_path / "checklist.csv"
+    path.write_text("requirement,notes\n\nПервое\n,Примечание\nВторое,Текст,Лишнее\n")
+    assert load_checklist(path) == (Requirement("1", "Первое"), Requirement("3", "Второе"))
 
 
 @pytest.mark.parametrize(
@@ -74,7 +76,7 @@ def test_scan_and_password_protected_pdf_fail_clearly(tmp_path):
 
 
 def test_missing_unsupported_and_corrupt_documents(tmp_path):
-    with pytest.raises(ValueError, match="не найден"):
+    with pytest.raises(ValueError, match="missing.pdf"):
         read_document(tmp_path / "missing.pdf")
     path = tmp_path / "file.txt"
     path.write_text("text")
@@ -111,24 +113,3 @@ def test_export_failure_has_no_substantive_status(tmp_path):
     book = load_workbook(path)
     assert book["Результаты"].cell(2, 3).value is None
     assert book["Результаты"].cell(2, 7).value == "Сбой модели"
-
-
-def test_settings_validate_paths(tmp_path):
-    settings = Settings(tmp_path / "server", tmp_path / "model", tmp_path / "e5")
-    with pytest.raises(ValueError, match="llama-server"):
-        settings.validate()
-    settings.server_binary.touch()
-    with pytest.raises(ValueError, match="GGUF"):
-        settings.validate()
-    settings.model_file.touch()
-    settings.embedding_dir.mkdir()
-    for name in ["model.onnx", "tokenizer.json"]:
-        with pytest.raises(ValueError, match=name):
-            settings.validate()
-        (settings.embedding_dir / name).touch()
-    settings.validate()
-
-
-def test_empty_domain_text_is_rejected():
-    with pytest.raises(ValueError):
-        Requirement("", "text")

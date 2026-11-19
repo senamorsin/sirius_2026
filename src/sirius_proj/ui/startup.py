@@ -4,11 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from sirius_proj.installation import load_xcb_cursor
-
-
-class MissingDesktopLibrary(RuntimeError):
-    pass
+from sirius_proj.installation import prepare_desktop
 
 
 def prepare_qt(root: Path) -> None:
@@ -21,10 +17,4 @@ def prepare_qt(root: Path) -> None:
         raise RuntimeError(
             "Нет графической сессии DISPLAY. Для проверки без окна используйте check."
         )
-    if load_xcb_cursor(root):
-        return
-    raise MissingDesktopLibrary(
-        "Qt не может загрузить libxcb-cursor.so.0. "
-        "Выполните uv run sirius-proj install "
-        "или установите системный пакет libxcb-cursor0."
-    )
+    prepare_desktop(root)

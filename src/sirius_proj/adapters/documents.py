@@ -3,6 +3,7 @@
 import csv
 import re
 from pathlib import Path
+from typing import BinaryIO
 
 from docx import Document
 from docx.table import Table
@@ -19,41 +20,24 @@ def load_checklist(path: Path) -> tuple[Requirement, ...]:
         return WordChecklist.read(path).requirements
     with path.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
-        if reader.fieldnames is None or not {"id", "requirement"} <= set(reader.fieldnames):
-            raise ValueError(
-                "CSV должен содержать заголовки id,requirement (UTF-8, разделитель — запятая)"
-            )
+        if reader.fieldnames and "requirement" not in reader.fieldnames:
+            raise ValueError("В CSV нужна колонка requirement (UTF-8, разделитель — запятая)")
         requirements = []
-        seen = set()
-        for number, row in enumerate(reader, 2):
-            requirement = _parse_row(row, number)
-            if requirement.id in seen:
-                raise ValueError(f"Строка {number}: повторяется id «{requirement.id}»")
-            seen.add(requirement.id)
-            requirements.append(requirement)
-    if not requirements:
-        raise ValueError("Чек-лист не содержит требований")
+        for number, row in enumerate(reader, 1):
+            if criterion := (row.get("requirement") or "").strip():
+                identifier = (row.get("id") or "").strip() or str(number)
+                requirements.append(Requirement(identifier, criterion))
     return tuple(requirements)
 
 
-def _parse_row(row: dict, number: int) -> Requirement:
-    if None in row or any(value is None for value in row.values()):
-        raise ValueError(f"Строка {number}: неверное число колонок CSV")
-    try:
-        return Requirement(row["id"].strip(), row["requirement"].strip())
-    except ValueError as error:
-        raise ValueError(f"Строка {number}: {error}") from error
-
-
 def read_document(path: Path) -> DocumentText:
-    if not path.is_file():
-        raise ValueError(f"Документ не найден: {path.name}")
     readers = {".docx": _read_docx, ".pdf": _read_pdf}
     reader = readers.get(path.suffix.lower())
     if reader is None:
         raise ValueError("Поддерживаются только DOCX и PDF")
     try:
-        document = reader(path)
+        with path.open("rb") as stream:
+            document = reader(path, stream)
     except Exception as error:
         raise ValueError(f"Не удалось прочитать {path.name}: {error}") from error
     if not document.blocks:
@@ -63,8 +47,8 @@ def read_document(path: Path) -> DocumentText:
     return document
 
 
-def _read_docx(path: Path) -> DocumentText:
-    document = Document(path)
+def _read_docx(path: Path, stream: BinaryIO) -> DocumentText:
+    document = Document(stream)
     blocks = []
     heading_blocks = []
     headings = {}
@@ -109,11 +93,11 @@ def _heading_level(paragraph: Paragraph) -> int | None:
     return int(match[1]) if match else None
 
 
-def _column_headers(table: Table) -> tuple[str, ...] | None:
+def _column_headers(table: Table) -> dict[int, str]:
     if not table.rows:
-        return None
+        return {}
     first = table.rows[0]
-    cells = tuple(cell.text.strip() for cell in first.cells)
+    cells = dict(enumerate((cell.text.strip() for cell in first.cells), first.grid_cols_before))
     if first._tr.xpath("./w:trPr/w:tblHeader"):
         return cells
     names = {
@@ -142,21 +126,20 @@ def _column_headers(table: Table) -> tuple[str, ...] | None:
         "функция",
         "предлагаемая реакция",
     }
-    return cells if sum(cell.casefold() in names for cell in cells) >= 2 else None
+    return cells if sum(cell.casefold() in names for cell in cells.values()) >= 2 else {}
 
 
 def _table_blocks(table: Table, number: int, heading: str, caption: str) -> list[Block]:
     blocks = []
     headers = _column_headers(table)
     for row_number, row in enumerate(table.rows, 1):
-        if row_number == 1 and headers is not None:
+        if row_number == 1 and headers:
             continue
         cells = tuple(cell.text.strip() for cell in row.cells)
         if any(cells):
-            columns = (
-                headers
-                if headers and len(headers) == len(cells)
-                else tuple(f"Столбец {i}" for i in range(1, len(cells) + 1))
+            columns = tuple(
+                headers.get(index, f"Столбец {index + 1}")
+                for index in range(row.grid_cols_before, row.grid_cols_before + len(cells))
             )
             location = Location("docx", heading=heading, table=number, row=row_number)
             blocks.append(
@@ -170,8 +153,8 @@ def _table_blocks(table: Table, number: int, heading: str, caption: str) -> list
     return blocks
 
 
-def _read_pdf(path: Path) -> DocumentText:
-    reader = PdfReader(path)
+def _read_pdf(path: Path, stream: BinaryIO) -> DocumentText:
+    reader = PdfReader(stream)
     if reader.is_encrypted and not reader.decrypt(""):
         raise ValueError("PDF защищён паролем; сохраните доступную копию")
     blocks, warnings = [], []

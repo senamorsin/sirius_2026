@@ -22,11 +22,6 @@ class Status(StrEnum):
         }[self]
 
 
-def require_text(value: str, name: str) -> None:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name}: требуется непустой текст")
-
-
 class CheckKind(StrEnum):
     CONTENT = "RAG"
     METADATA = "Метаданные"
@@ -39,10 +34,6 @@ class Requirement:
     text: str
     comment: str = ""
     kind: CheckKind = CheckKind.CONTENT
-
-    def __post_init__(self) -> None:
-        require_text(self.id, "Идентификатор")
-        require_text(self.text, "Требование")
 
 
 @dataclass(frozen=True)
@@ -101,10 +92,6 @@ class DocumentText:
 class Citation:
     chunk_id: str
     quote: str
-
-    def __post_init__(self) -> None:
-        require_text(self.chunk_id, "Идентификатор цитаты")
-        require_text(self.quote, "Цитата")
 
 
 @dataclass(frozen=True)

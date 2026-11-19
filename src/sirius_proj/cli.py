@@ -5,6 +5,7 @@ import json
 import sys
 from dataclasses import replace
 from pathlib import Path
+from subprocess import SubprocessError
 
 from sirius_proj.config import default_data_dir, default_settings
 from sirius_proj.domain.models import CheckFailure
@@ -38,20 +39,11 @@ def main() -> int:
             print(f"Не удалось подготовить компоненты: {error}", file=sys.stderr)
             return 1
     if args.command is None:
-        from .ui.startup import MissingDesktopLibrary, prepare_qt
+        from sirius_proj.ui.startup import prepare_qt
 
         try:
             prepare_qt(args.data_dir)
-        except MissingDesktopLibrary:
-            from sirius_proj.installation import prepare_desktop
-
-            try:
-                prepare_desktop(args.data_dir)
-                prepare_qt(args.data_dir)
-            except (OSError, RuntimeError) as error:
-                print(str(error), file=sys.stderr)
-                return 1
-        except RuntimeError as error:
+        except (OSError, RuntimeError) as error:
             print(str(error), file=sys.stderr)
             return 1
         from sirius_proj.bootstrap import launch_gui
@@ -72,7 +64,7 @@ def main() -> int:
             )
         print(f"Готово: {args.output} · {report.seconds:.2f} с")
         return 2 if any(isinstance(item, CheckFailure) for item in report.results) else 0
-    except (ValueError, RuntimeError, OSError) as error:
+    except (ValueError, RuntimeError, OSError, SubprocessError) as error:
         print(f"Проверка не выполнена: {error}", file=sys.stderr)
         return 1
 

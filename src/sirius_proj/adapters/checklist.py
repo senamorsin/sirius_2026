@@ -1,6 +1,7 @@
 """Чтение шаблона Word и заполнение тех же строк результатами проверки."""
 
 from dataclasses import dataclass
+from itertools import zip_longest
 from pathlib import Path
 from typing import Self
 
@@ -20,8 +21,11 @@ REQUIRED = {"требование", RESULT, CONFIRMATION}
 @dataclass(frozen=True)
 class WordChecklist:
     document: WordDocument
-    rows: dict[str, dict[str, _Cell]]
-    requirements: tuple[Requirement, ...]
+    rows: list[tuple[Requirement, dict[str, _Cell]]]
+
+    @property
+    def requirements(self) -> tuple[Requirement, ...]:
+        return tuple(requirement for requirement, _ in self.rows)
 
     @classmethod
     def read(cls, path: Path) -> Self:
@@ -29,41 +33,36 @@ class WordChecklist:
             document = Document(path)
         except (ValueError, OSError, KeyError, PackageNotFoundError) as error:
             raise ValueError(f"Не удалось прочитать чек-лист {path.name}: {error}") from error
-        candidates = []
+        tables = []
         for table in document.tables:
-            if table.rows:
-                header = table.rows[0]
-                columns = [""] * header.grid_cols_before + [
-                    " ".join(cell.text.casefold().split()) for cell in header.cells
-                ]
-                if REQUIRED.issubset(columns):
-                    candidates.append((table, columns))
-        if len(candidates) != 1:
-            raise ValueError(
-                "В DOCX нужна одна таблица с требованиями, результатами и подтверждением"
-            )
-        table, columns = candidates[0]
-        rows, requirements = {}, []
-        for number, row in enumerate(table.rows[1:], 1):
-            cells = dict(zip(columns[row.grid_cols_before :], row.cells, strict=False))
-            fields = {
-                name: cell.text.strip()
-                for name, cell in cells.items()
-                if name not in (RESULT, CONFIRMATION)
-            }
-            criterion = fields.get("требование")
-            if not criterion:
+            if not table.rows:
                 continue
-            identifier = fields.get("№ п/п", fields.get("№")) or str(number)
-            if identifier in rows:
-                raise ValueError(f"Повторяется номер требования: {identifier}")
-            comment = fields.get("комментарий", "")
-            kind = parse_kind(fields.get("тип проверки", fields.get("типа проверки", "")))
-            requirements.append(Requirement(identifier, criterion, comment, kind))
-            rows[identifier] = cells
-        if not requirements:
-            raise ValueError("Чек-лист не содержит требований")
-        return cls(document, rows, tuple(requirements))
+            header, *body = table.rows
+            columns = [""] * header.grid_cols_before + [
+                " ".join(cell.text.casefold().split()) for cell in header.cells
+            ]
+            if REQUIRED.issubset(columns):
+                tables.append((columns, body))
+        if not tables:
+            raise ValueError(
+                "В DOCX не найдена таблица с требованиями, результатами и подтверждением"
+            )
+
+        rows = []
+        for columns, body in tables:
+            for row in body:
+                cells = dict(zip(columns[row.grid_cols_before :], row.cells, strict=False))
+                fields = {
+                    name: cell.text.strip()
+                    for name, cell in cells.items()
+                    if name not in (RESULT, CONFIRMATION)
+                }
+                if criterion := fields.get("требование"):
+                    identifier = fields.get("№ п/п", fields.get("№")) or str(len(rows) + 1)
+                    comment = fields.get("комментарий", "")
+                    kind = parse_kind(fields.get("тип проверки", fields.get("типа проверки", "")))
+                    rows.append((Requirement(identifier, criterion, comment, kind), cells))
+        return cls(document, rows)
 
 
 def parse_kind(value: str) -> CheckKind:
@@ -71,20 +70,17 @@ def parse_kind(value: str) -> CheckKind:
     for kind in (CheckKind.METADATA, CheckKind.STRUCTURE):
         if text.startswith(kind.value.casefold()):
             return kind
-    if text in ("", "rag"):
-        return CheckKind.CONTENT
-    raise ValueError(f"Неизвестный тип проверки: {value}")
+    return CheckKind.CONTENT
 
 
 def write_docx_report(path: Path, report: CheckReport) -> None:
     if report.checklist_path is None or report.checklist_path.suffix.lower() != ".docx":
         raise ValueError("Для заполнения отчёта DOCX нужен исходный чек-лист DOCX")
     checklist = WordChecklist.read(report.checklist_path)
-    results = {result.requirement: result for result in report.results}
-    if results.keys() - set(checklist.requirements):
+    checked = tuple(result.requirement for result in report.results)
+    if checked != checklist.requirements[: len(checked)]:
         raise ValueError("Шаблон изменился после проверки. Запустите проверку заново.")
-    for requirement in checklist.requirements:
-        result = results.get(requirement)
+    for (_, cells), result in zip_longest(checklist.rows, report.results):
         state = evidence = ""
         if isinstance(result, CheckFailure):
             state = f"Техническая ошибка\n{result.message}"
@@ -96,7 +92,6 @@ def write_docx_report(path: Path, report: CheckReport) -> None:
                 else f"{item.location.label}\n«{item.quote}»"
                 for item in result.evidence
             )
-        cells = checklist.rows[requirement.id]
         for column, text in ((RESULT, state), (CONFIRMATION, evidence)):
             if column in cells:
                 cells[column].text = text
